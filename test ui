@@ -95,14 +95,14 @@ function UILib.new(config)
     stroke.Thickness = 1.5
     stroke.Transparency = 0.5
     
-    -- Dragging
-    self:_setupDrag()
-    
     -- Animated top bar line
     self:_createAnimatedBar()
     
     -- Title Bar
     self:_createTitleBar()
+    
+    -- Setup dragging (after TitleBar is created)
+    self:_setupDrag()
     
     -- Sidebar
     self:_createSidebar()
@@ -138,17 +138,39 @@ function UILib.new(config)
 end
 
 --=============================================
--- INTERNAL: Drag System
+-- INTERNAL: Drag System (Title Bar Only)
 --=============================================
 function UILib:_setupDrag()
-    local dragging, dragInput, dragStart, startPos
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
     
-    self.Main.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 
-        or input.UserInputType == Enum.UserInputType.Touch then
+    local function update(input)
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale, 
+            startPos.Y.Offset + delta.Y
+        )
+        
+        TweenService:Create(self.Main, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {
+            Position = newPos
+        }):Play()
+        TweenService:Create(self.Shadow, TweenInfo.new(0.1, Enum.EasingStyle.Linear), {
+            Position = newPos
+        }):Play()
+    end
+    
+    -- Only allow dragging from TitleBar
+    self.TitleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
+           input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStart = input.Position
             startPos = self.Main.Position
+            
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
@@ -157,22 +179,16 @@ function UILib:_setupDrag()
         end
     end)
     
-    self.Main.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement 
-        or input.UserInputType == Enum.UserInputType.Touch then
+    self.TitleBar.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or 
+           input.UserInputType == Enum.UserInputType.Touch then
             dragInput = input
         end
     end)
     
     UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            local newPos = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X,
-                startPos.Y.Scale, startPos.Y.Offset + delta.Y
-            )
-            self.Main.Position = newPos
-            self.Shadow.Position = newPos
+        if dragging and input == dragInput then
+            update(input)
         end
     end)
 end
