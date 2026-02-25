@@ -1,4 +1,4 @@
--- UILibrary V2.4 - Premium Edition (Full Fixed)
+-- UILibrary V2.4 - Premium Edition (Full Fixed + Dropdown Scroll)
 local UILib = {}
 UILib.__index = UILib
 
@@ -251,7 +251,7 @@ function UILib.new(config)
 end
 
 -- ============================================
--- DRAG - HEADER ONLY
+-- DRAG
 -- ============================================
 function UILib:_setupDrag()
     local dragging,dragInput,dragStart,startPos
@@ -345,8 +345,7 @@ function UILib:_createAccentBar()
 end
 
 -- ============================================
--- TITLE BAR (FIXED LAYOUT)
--- [dot][title/sub] ... [status1/2/3] ... [—][✕]
+-- TITLE BAR
 -- ============================================
 function UILib:_createTitleBar()
     local T=self.Theme
@@ -356,7 +355,6 @@ function UILib:_createTitleBar()
     self.TitleBar.BorderSizePixel=0 self.TitleBar.Position=UDim2.new(0,0,0,2)
     self.TitleBar.Size=UDim2.new(1,0,0,hh) self.TitleBar.ZIndex=3
 
-    -- Dot
     local dotSize=12
     local dot=Instance.new("Frame",self.TitleBar) dot.BackgroundColor3=T.Accent dot.BorderSizePixel=0
     dot.Position=UDim2.new(0,10,0.5,-dotSize/2) dot.Size=UDim2.new(0,dotSize,0,dotSize) dot.ZIndex=5
@@ -373,7 +371,6 @@ function UILib:_createTitleBar()
         end
     end)
 
-    -- Title + Subtitle (LEFT)
     local titleX=28
     local titleW=110
     if self.Subtitle~="" then
@@ -396,12 +393,10 @@ function UILib:_createTitleBar()
         tl.TextTruncate=Enum.TextTruncate.AtEnd
     end
 
-    -- BUTTONS (RIGHT) - btnSize and positions
     local btnSize=26
     local btnGap=5
     local rightPad=8
 
-    -- Close button (rightmost)
     local cb=Instance.new("TextButton",self.TitleBar) cb.BackgroundColor3=T.Error cb.BackgroundTransparency=1
     cb.BorderSizePixel=0 cb.AnchorPoint=Vector2.new(1,0.5) cb.Position=UDim2.new(1,-rightPad,0.5,0)
     cb.Size=UDim2.new(0,btnSize,0,btnSize) cb.Text="" cb.AutoButtonColor=false cb.ZIndex=50 cb.ClipsDescendants=true
@@ -424,7 +419,6 @@ function UILib:_createTitleBar()
     end)
     cb.MouseButton1Click:Connect(function() doRipple(cb,mPos(),T.Ripple) self:_animateClose() end)
 
-    -- Minimize button (left of close)
     local mb=Instance.new("TextButton",self.TitleBar) mb.BackgroundColor3=T.Warning mb.BackgroundTransparency=1
     mb.BorderSizePixel=0 mb.AnchorPoint=Vector2.new(1,0.5)
     mb.Position=UDim2.new(1,-(rightPad+btnSize+btnGap),0.5,0)
@@ -447,10 +441,9 @@ function UILib:_createTitleBar()
         self:_toggleMinimize()
     end)
 
-    -- STATUS LABELS (between title and buttons, properly sized)
     local statusStartX = titleX + titleW + 8
     local buttonsTotalW = rightPad + btnSize + btnGap + btnSize + 8
-    
+
     local sf=Instance.new("Frame",self.TitleBar) sf.BackgroundTransparency=1
     sf.Position=UDim2.new(0,statusStartX,0,0)
     sf.Size=UDim2.new(1,-(statusStartX+buttonsTotalW),1,0)
@@ -465,7 +458,6 @@ function UILib:_createTitleBar()
         self.StatusLabels[i]=l
     end
 
-    -- Bottom divider
     local dv=Instance.new("Frame",self.TitleBar) dv.BackgroundColor3=T.Divider dv.BorderSizePixel=0
     dv.Position=UDim2.new(0,0,1,-1) dv.Size=UDim2.new(1,0,0,1) dv.ZIndex=4
 end
@@ -920,48 +912,107 @@ function UILib._SectionMethods:AddSlider(config)
         GetValue=function() return cur end}
 end
 
+-- ============================================
+-- DROPDOWN DENGAN SCROLL (DIPERBARUI)
+-- ============================================
 function UILib._SectionMethods:AddDropdown(config)
     local T=self.Library.Theme self._elementOrder=self._elementOrder+1
     local items=config.Items or {} local multi=config.Multi or false
+    local maxVisible=config.MaxVisible or 6 -- ← BARU: jumlah item maksimal sebelum scroll
     local default=config.Default or (not multi and items[1] or {})
     local callback=config.Callback or function() end local isOpen=false
     local selected=multi and {} or default
     if multi and type(config.Default)=="table" then for _,v in ipairs(config.Default) do selected[v]=true end end
+
+    local itemH=28    -- tinggi per item
+    local itemGap=2   -- jarak antar item
+
     local function getDisplay()
         if multi then local s={} for k,v in pairs(selected) do if v then table.insert(s,k) end end
             return #s>0 and table.concat(s,", ") or "None"
         else return tostring(selected) end
     end
+
+    -- Hitung tinggi scroll area
+    local function calcScrollH()
+        local totalItems=#items
+        local visCount=math.min(totalItems, maxVisible)
+        return visCount*(itemH+itemGap)+4
+    end
+
+    local function calcCanvasH()
+        return #items*(itemH+itemGap)+4
+    end
+
     local f=Instance.new("Frame",self.Frame) f.BackgroundColor3=T.Element f.BorderSizePixel=0
     f.Size=UDim2.new(1,0,0,34) f.LayoutOrder=config.Order or self._elementOrder f.ZIndex=4 f.ClipsDescendants=true
     Instance.new("UICorner",f).CornerRadius=UDim.new(0,6)
+
     local l=Instance.new("TextLabel",f) l.BackgroundTransparency=1 l.Position=UDim2.new(0,10,0,0)
     l.Size=UDim2.new(0.45,0,0,34) l.Font=Enum.Font.GothamSemibold l.Text=config.Text or "Select"
     l.TextColor3=T.TextPrimary l.TextSize=11 l.TextXAlignment=Enum.TextXAlignment.Left l.ZIndex=5
+
     local vl=Instance.new("TextLabel",f) vl.BackgroundTransparency=1 vl.Position=UDim2.new(0.4,0,0,0)
     vl.Size=UDim2.new(0.6,-30,0,34) vl.Font=Enum.Font.Gotham vl.Text=getDisplay()
     vl.TextColor3=T.TextSecondary vl.TextSize=10 vl.TextXAlignment=Enum.TextXAlignment.Right
     vl.TextTruncate=Enum.TextTruncate.AtEnd vl.ZIndex=5
+
     local arrow=Instance.new("TextLabel",f) arrow.BackgroundTransparency=1 arrow.Position=UDim2.new(1,-24,0,0)
     arrow.Size=UDim2.new(0,16,0,34) arrow.Font=Enum.Font.GothamBold arrow.Text="▾"
     arrow.TextColor3=T.TextMuted arrow.TextSize=12 arrow.ZIndex=5
-    local of=Instance.new("Frame",f) of.BackgroundTransparency=1 of.Position=UDim2.new(0,6,0,38)
-    of.Size=UDim2.new(1,-12,0,0) of.ZIndex=5 of.Visible=false
-    pcall(function() of.AutomaticSize=Enum.AutomaticSize.Y end)
-    Instance.new("UIListLayout",of).Padding=UDim.new(0,2)
+
+    -- ═══════════════════════════════════════════
+    -- ScrollingFrame untuk daftar item (BARU)
+    -- ═══════════════════════════════════════════
+    local scrollH=calcScrollH()
+    local canvasH=calcCanvasH()
+    local needsScroll=#items>maxVisible
+
+    local of=Instance.new("ScrollingFrame",f)
+    of.Name="DropdownScroll"
+    of.BackgroundColor3=T.SurfaceAlt
+    of.BackgroundTransparency=0.8
+    of.BorderSizePixel=0
+    of.Position=UDim2.new(0,4,0,38)
+    of.Size=UDim2.new(1,-8,0,scrollH)
+    of.CanvasSize=UDim2.new(0,0,0,canvasH)
+    of.ScrollBarThickness=needsScroll and 3 or 0
+    of.ScrollBarImageColor3=T.ScrollBar
+    of.ScrollBarImageTransparency=0.2
+    of.ScrollingDirection=Enum.ScrollingDirection.Y
+    of.ZIndex=5
+    of.Visible=false
+    of.ClipsDescendants=true
+    pcall(function() of.AutomaticCanvasSize=Enum.AutomaticSize.Y end)
+    Instance.new("UICorner",of).CornerRadius=UDim.new(0,5)
+
+    local ofl=Instance.new("UIListLayout",of)
+    ofl.Padding=UDim.new(0,itemGap)
+    ofl.SortOrder=Enum.SortOrder.LayoutOrder
+
+    local ofp=Instance.new("UIPadding",of)
+    ofp.PaddingLeft=UDim.new(0,2)
+    ofp.PaddingRight=UDim.new(0,2)
+    ofp.PaddingTop=UDim.new(0,2)
+    ofp.PaddingBottom=UDim.new(0,2)
+
     local optBtns={}
+
     local function makeOpt(item,i)
         local ob=Instance.new("TextButton",of) ob.BackgroundColor3=T.SurfaceAlt ob.BackgroundTransparency=0.5
-        ob.BorderSizePixel=0 ob.Size=UDim2.new(1,0,0,28) ob.Font=Enum.Font.Gotham ob.TextColor3=T.TextSecondary
+        ob.BorderSizePixel=0 ob.Size=UDim2.new(1,0,0,itemH) ob.Font=Enum.Font.Gotham ob.TextColor3=T.TextSecondary
         ob.TextSize=10 ob.TextXAlignment=Enum.TextXAlignment.Left ob.AutoButtonColor=false ob.LayoutOrder=i
         ob.ZIndex=6 ob.ClipsDescendants=true Instance.new("UICorner",ob).CornerRadius=UDim.new(0,5)
         Instance.new("UIPadding",ob).PaddingLeft=UDim.new(0,10)
+
         local isSel=multi and selected[item] or (item==selected)
         ob.Text=multi and ((isSel and "☑ " or "☐ ")..item) or item
         if isSel then ob.TextColor3=T.Accent ob.BackgroundTransparency=0.3 end
+
         ob.MouseEnter:Connect(function() tw(ob,0.08,{BackgroundTransparency=0.2}) end)
         ob.MouseLeave:Connect(function() local s2=multi and selected[item] or (item==selected)
             tw(ob,0.08,{BackgroundTransparency=s2 and 0.3 or 0.5}) end)
+
         ob.MouseButton1Click:Connect(function()
             if multi then selected[item]=not selected[item]
                 ob.Text=(selected[item] and "☑ " or "☐ ")..item
@@ -977,21 +1028,63 @@ function UILib._SectionMethods:AddDropdown(config)
         end)
         optBtns[item]=ob return ob
     end
+
     for i,item in ipairs(items) do makeOpt(item,i) end
+
+    -- Header click untuk buka/tutup
     local hb=Instance.new("TextButton",f) hb.BackgroundTransparency=1 hb.Size=UDim2.new(1,0,0,34) hb.Text="" hb.ZIndex=6
     hb.MouseEnter:Connect(function() tw(f,0.1,{BackgroundColor3=T.ElementHover}) end)
     hb.MouseLeave:Connect(function() tw(f,0.1,{BackgroundColor3=T.Element}) end)
+
     hb.MouseButton1Click:Connect(function()
         isOpen=not isOpen
-        if isOpen then of.Visible=true local h=math.min(#items*30,200)+8
-            tw(f,0.25,{Size=UDim2.new(1,0,0,34+h)},Enum.EasingStyle.Back) tw(arrow,0.15,{Rotation=180})
-        else tw(f,0.2,{Size=UDim2.new(1,0,0,34)}) tw(arrow,0.15,{Rotation=0})
-            task.delay(0.2,function() if not isOpen then of.Visible=false end end) end
+        if isOpen then
+            of.Visible=true
+            of.CanvasPosition=Vector2.new(0,0) -- reset scroll ke atas
+            local openH=scrollH+8
+            tw(f,0.25,{Size=UDim2.new(1,0,0,34+openH)},Enum.EasingStyle.Back)
+            tw(arrow,0.15,{Rotation=180})
+        else
+            tw(f,0.2,{Size=UDim2.new(1,0,0,34)})
+            tw(arrow,0.15,{Rotation=0})
+            task.delay(0.2,function() if not isOpen then of.Visible=false end end)
+        end
     end)
-    return {Frame=f,SetValue=function(_,v) selected=v vl.Text=getDisplay() end,GetValue=function() return selected end,
-        Refresh=function(_,ni) for _,ob in pairs(optBtns) do ob:Destroy() end optBtns={} items=ni
+
+    return {
+        Frame=f,
+        SetValue=function(_,v)
+            selected=v vl.Text=getDisplay()
+        end,
+        GetValue=function() return selected end,
+        Refresh=function(_,ni)
+            -- Hapus semua option lama
+            for _,ob in pairs(optBtns) do ob:Destroy() end
+            optBtns={}
+            items=ni
+
+            -- Buat option baru
             for i,item in ipairs(ni) do makeOpt(item,i) end
-            if not multi then selected=ni[1] or "" vl.Text=getDisplay() end end}
+
+            -- Update scroll dimensions
+            local newScrollH=calcScrollH()
+            local newCanvasH=calcCanvasH()
+            local newNeedsScroll=#items>maxVisible
+
+            of.Size=UDim2.new(1,-8,0,newScrollH)
+            of.CanvasSize=UDim2.new(0,0,0,newCanvasH)
+            of.ScrollBarThickness=newNeedsScroll and 3 or 0
+            scrollH=newScrollH
+
+            if not multi then selected=ni[1] or "" vl.Text=getDisplay() end
+
+            -- Update ukuran frame jika sedang terbuka
+            if isOpen then
+                local openH=scrollH+8
+                tw(f,0.2,{Size=UDim2.new(1,0,0,34+openH)})
+            end
+        end
+    }
 end
 
 function UILib._SectionMethods:AddColorPicker(config)
