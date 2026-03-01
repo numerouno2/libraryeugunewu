@@ -1,1258 +1,1449 @@
--- ╔══════════════════════════════════════════╗
--- ║          N E X U S  L I B  v2            ║
--- ║    Compact · Mobile-Friendly · Premium   ║
--- ╚══════════════════════════════════════════╝
+-- UILibrary.lua — Premium Visual Redesign
+-- API 100% sama dengan versi asli — drop-in replacement
+-- Visual: Nexus-style, compact, mobile-friendly, polished
 
-local NexusLib = {}
-NexusLib.__index = NexusLib
+local UILib = {}
+UILib.__index = UILib
 
-local TS   = game:GetService("TweenService")
-local UIS  = game:GetService("UserInputService")
-local VIM  = game:GetService("VirtualInputManager")
-local PLR  = game:GetService("Players")
+local TweenService        = game:GetService("TweenService")
+local UserInputService    = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Players             = game:GetService("Players")
 
--- ─────────────────────────────────────
--- THEME
--- ─────────────────────────────────────
-local T = {
-	BG0   = Color3.fromRGB(8,   8,  12),
-	BG1   = Color3.fromRGB(13,  13, 19),   -- main window
-	BG2   = Color3.fromRGB(17,  17, 25),   -- sidebar
-	BG3   = Color3.fromRGB(22,  22, 34),   -- section / card
-	BG4   = Color3.fromRGB(30,  30, 45),   -- element bg
-	BG5   = Color3.fromRGB(38,  38, 56),   -- hover / active elem
+-- ┌─────────────────────────────────────┐
+-- │  DESIGN TOKENS                      │
+-- └─────────────────────────────────────┘
+local D = {
+	-- Background layers (deep midnight navy)
+	BG0 = Color3.fromRGB(7,   7,  11),
+	BG1 = Color3.fromRGB(12,  12, 18),   -- window base
+	BG2 = Color3.fromRGB(16,  16, 24),   -- sidebar / titlebar
+	BG3 = Color3.fromRGB(21,  21, 33),   -- section card
+	BG4 = Color3.fromRGB(28,  28, 44),   -- element / header
+	BG5 = Color3.fromRGB(36,  36, 56),   -- hover / input
 
-	Acc   = Color3.fromRGB(99,  102, 241),
-	AccLt = Color3.fromRGB(139, 142, 255),
-	Cyan  = Color3.fromRGB(34,  211, 238),
-	Green = Color3.fromRGB(52,  211, 153),
-	Red   = Color3.fromRGB(248,  82,  82),
-	Yel   = Color3.fromRGB(251, 191,  36),
-	Pink  = Color3.fromRGB(236, 100, 180),
+	-- Accent
+	ACC = Color3.fromRGB(95,  99, 242),   -- indigo
+	ACL = Color3.fromRGB(134, 138, 255),  -- indigo light
+	ACX = Color3.fromRGB(170, 172, 255),  -- indigo xlight
 
-	TX0   = Color3.fromRGB(245, 245, 255),
-	TX1   = Color3.fromRGB(175, 177, 210),
-	TX2   = Color3.fromRGB(100, 103, 140),
-	TXD   = Color3.fromRGB(55,  57,  85),
+	-- Status colours
+	GRN = Color3.fromRGB(48,  210, 150),  -- green
+	CYN = Color3.fromRGB(28,  208, 236),  -- cyan
+	YLW = Color3.fromRGB(250, 189,  34),  -- yellow
+	RED = Color3.fromRGB(248,  74,  74),  -- red
 
-	Bdr   = Color3.fromRGB(32,  34,  52),
-	BdrL  = Color3.fromRGB(50,  52,  78),
+	-- Text
+	T0  = Color3.fromRGB(240, 240, 252),  -- primary
+	T1  = Color3.fromRGB(165, 167, 200),  -- secondary
+	T2  = Color3.fromRGB(92,   95, 130),  -- muted
+	T3  = Color3.fromRGB(45,   47,  72),  -- dim
 
-	FH = Enum.Font.GothamBold,
-	FM = Enum.Font.GothamSemibold,
-	FR = Enum.Font.Gotham,
+	-- Border
+	BD  = Color3.fromRGB(26,  28,  46),
+	BDL = Color3.fromRGB(46,  48,  76),
+
+	-- Fonts (same as Roblox standard, but we pick consistently)
+	FB  = Enum.Font.GothamBold,
+	FSB = Enum.Font.GothamSemibold,
+	FN  = Enum.Font.Gotham,
 }
 
--- ─────────────────────────────────────
--- HELPERS
--- ─────────────────────────────────────
-local function mobile()
-	return UIS.TouchEnabled and not UIS.KeyboardEnabled
+-- ┌─────────────────────────────────────┐
+-- │  HELPERS (internal)                 │
+-- └─────────────────────────────────────┘
+local function isMobile()
+	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
-local function screen()
-	local c = workspace.CurrentCamera
-	return c and c.ViewportSize or Vector2.new(1920,1080)
+local function getScreenSize()
+	local cam = workspace.CurrentCamera
+	return cam and cam.ViewportSize or Vector2.new(1920, 1080)
 end
 
-local function tw(o,p,t,s,d)
-	return TS:Create(o,TweenInfo.new(t or .2, s or Enum.EasingStyle.Quint, d or Enum.EasingDirection.Out),p)
+local function getScale()
+	local screen = getScreenSize()
+	if isMobile() then
+		local s = math.min(screen.X, screen.Y)
+		if s < 400 then return 0.55 end
+		if s < 500 then return 0.62 end
+		if s < 700 then return 0.70 end
+		return 0.78
+	end
+	return 1
 end
 
-local function inst(cls, parent, props)
+-- Tween shorthand
+local function T(obj, props, t, style, dir)
+	return TweenService:Create(obj,
+		TweenInfo.new(t or .2, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out),
+		props)
+end
+
+-- Instance shorthand
+local function N(cls, parent, props)
 	local i = Instance.new(cls)
-	for k,v in pairs(props or {}) do i[k]=v end
 	if parent then i.Parent = parent end
+	for k, v in pairs(props or {}) do i[k] = v end
 	return i
 end
 
-local function corner(p, r)
-	inst("UICorner", p, {CornerRadius = UDim.new(0, r or 7)})
+local function corner(p, r) N("UICorner", p, {CornerRadius = UDim.new(0, r or 7)}) end
+local function stroke(p, col, thick, tr)
+	N("UIStroke", p, {Color=col or D.BD, Thickness=thick or 1, Transparency=tr or 0})
 end
-
-local function stroke(p, col, thick, trans)
-	inst("UIStroke", p, {
-		Color = col or T.Bdr,
-		Thickness = thick or 1,
-		Transparency = trans or 0,
+local function padI(p, l, r, t, b)
+	N("UIPadding", p, {
+		PaddingLeft  =UDim.new(0,l or 0), PaddingRight =UDim.new(0,r or 0),
+		PaddingTop   =UDim.new(0,t or 0), PaddingBottom=UDim.new(0,b or 0),
+	})
+end
+local function vList(p, gap)
+	N("UIListLayout", p, {Padding=UDim.new(0,gap or 0), SortOrder=Enum.SortOrder.LayoutOrder})
+end
+local function hList(p, gap)
+	N("UIListLayout", p, {
+		Padding=UDim.new(0,gap or 0),
+		FillDirection=Enum.FillDirection.Horizontal,
+		SortOrder=Enum.SortOrder.LayoutOrder,
 	})
 end
 
-local function listLayout(p, pad, fill)
-	inst("UIListLayout", p, {
-		Padding = UDim.new(0, pad or 0),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		FillDirection = fill or Enum.FillDirection.Vertical,
-	})
-end
+-- ┌─────────────────────────────────────┐
+-- │  UILib.new(config)                  │
+-- └─────────────────────────────────────┘
+function UILib.new(config)
+	local self = setmetatable({}, UILib)
 
--- ─────────────────────────────────────
--- CONSTRUCTOR
--- ─────────────────────────────────────
-function NexusLib.new(cfg)
-	local self = setmetatable({}, NexusLib)
-	cfg = cfg or {}
+	-- ── public state (same names as original) ──────────────────
+	self.Title           = config.Title or "My Hub"
+	self.Tabs            = {}
+	self.TabButtons      = {}
+	self.TabPages        = {}
+	self.ActiveTab       = nil
+	self.UpdateCallbacks = {}
+	self.IsMobile        = isMobile()
+	self.Scale           = getScale()
+	self.StatusLabels    = {}
+	self._resizing       = false
+	self._minimized      = false
 
-	self.Title    = cfg.Title    or "Nexus Hub"
-	self.Subtitle = cfg.Subtitle or ""
-	self.Tabs     = {}
-	self.TBtns    = {}   -- tab buttons
-	self.TPages   = {}   -- tab pages
-	self.Active   = nil
-	self.CBs      = {}
-	self.Mobile   = mobile()
-	self._min     = false
-	self._rsz     = false
-
-	-- ── Compact responsive size ──────────────
-	local sc = screen()
-	if cfg.Size then
-		self.Size = cfg.Size
-	elseif self.Mobile then
-		-- Mobile: gunakan hampir full screen, sisakan margin kecil
-		local mw = math.min(sc.X - 16, 420)
-		local mh = math.min(sc.Y - 80, 300)
-		self.Size = UDim2.new(0, mw, 0, mh)
+	-- ── responsive size (same logic as original) ───────────────
+	local screen = getScreenSize()
+	if config.Size then
+		self.Size = config.Size
+	elseif self.IsMobile then
+		self.Size = UDim2.new(0, math.min(screen.X-16, 420), 0, math.min(screen.Y-60, 310))
 	else
-		-- Desktop: compact, mirip screenshot
 		self.Size = UDim2.new(0, 490, 0, 295)
 	end
 
-	-- ── Layout metrics ────────────────────────
-	-- Semua diperkecil dari versi lama
-	local M = self.Mobile
-	self.SW   = M and 105  or 130    -- sidebar width
-	self.TH   = M and 38   or 44     -- title bar height
-	self.EH   = M and 28   or 32     -- element height
-	self.TBH  = M and 28   or 30     -- tab button height
-	self.TBG  = M and 32   or 34     -- tab button gap
-	self.FS = {
-		title = M and 11 or 13,
-		tab   = M and 10 or 11,
-		elem  = M and 10 or 11,
-		sec   = M and  9 or  9,
-		small = M and  8 or  9,
-	}
-	self.CP = M and 7 or 9    -- content padding
+	-- ── layout metrics (compact, same names as original) ───────
+	if self.IsMobile then
+		self.SidebarWidth      = 108
+		self.TitleBarHeight    = 38
+		self.FontTitle         = 11
+		self.FontTab           = 10
+		self.FontElement       = 10
+		self.FontSmall         = 8
+		self.ElementHeight     = 28
+		self.SectionPadding    = 7
+		self.TabButtonHeight   = 28
+		self.TabButtonSpacing  = 32
+	else
+		self.SidebarWidth      = 130
+		self.TitleBarHeight    = 44
+		self.FontTitle         = 13
+		self.FontTab           = 11
+		self.FontElement       = 11
+		self.FontSmall         = 9
+		self.ElementHeight     = 32
+		self.SectionPadding    = 9
+		self.TabButtonHeight   = 30
+		self.TabButtonSpacing  = 34
+	end
 
-	-- ── Destroy old ──────────────────────────
-	local old = game.CoreGui:FindFirstChild("NexusLib_GUI")
+	-- TopBarH kept as 0 — replaced by subtle inner glow (no animated bar)
+	self.TopBarH    = 0
+	self.HeaderTotal = self.TopBarH + self.TitleBarHeight
+
+	-- ── destroy old ────────────────────────────────────────────
+	local old = game.CoreGui:FindFirstChild("UILib_Main")
 	if old then old:Destroy() end
 
-	-- ── ScreenGui ────────────────────────────
-	self.SG = inst("ScreenGui", game.CoreGui, {
-		Name = "NexusLib_GUI",
-		ResetOnSpawn = false,
+	-- ── ScreenGui ──────────────────────────────────────────────
+	self.ScreenGui = N("ScreenGui", game.CoreGui, {
+		Name           = "UILib_Main",
+		ResetOnSpawn   = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	})
 
-	-- ── Shadow ───────────────────────────────
-	self.Shadow = inst("ImageLabel", self.SG, {
-		AnchorPoint = Vector2.new(.5,.5),
+	-- ── Drop shadow ────────────────────────────────────────────
+	self.Shadow = N("ImageLabel", self.ScreenGui, {
+		AnchorPoint          = Vector2.new(.5,.5),
 		BackgroundTransparency = 1,
-		Position = UDim2.new(.5,0,.5,0),
-		Size = self.Size + UDim2.new(0,40,0,40),
-		Image = "rbxassetid://5554236805",
-		ImageColor3 = T.BG0,
-		ImageTransparency = 0.45,
-		ScaleType = Enum.ScaleType.Slice,
-		SliceCenter = Rect.new(23,23,277,277),
+		Position             = UDim2.new(.5,0,.5,0),
+		Size                 = self.Size + UDim2.new(0,44,0,44),
+		Image                = "rbxassetid://5554236805",
+		ImageColor3          = D.BG0,
+		ImageTransparency    = 0.44,
+		ScaleType            = Enum.ScaleType.Slice,
+		SliceCenter          = Rect.new(23,23,277,277),
 	})
 
-	-- ── Main ─────────────────────────────────
-	self.Main = inst("Frame", self.SG, {
-		Name = "NexusMain",
-		AnchorPoint = Vector2.new(.5,.5),
-		BackgroundColor3 = T.BG1,
-		BorderSizePixel = 0,
-		Position = UDim2.new(.5,0,.5,0),
-		Size = self.Size,
-		ClipsDescendants = true,
+	-- ── Main frame ─────────────────────────────────────────────
+	self.Main = N("Frame", self.ScreenGui, {
+		Name               = "Main",
+		AnchorPoint        = Vector2.new(.5,.5),
+		BackgroundColor3   = D.BG1,
+		BorderSizePixel    = 0,
+		Position           = UDim2.new(.5,0,.5,0),
+		Size               = self.Size,
+		ClipsDescendants   = true,
 	})
-	corner(self.Main, 12)
-	stroke(self.Main, T.BdrL, 1, 0.45)
+	corner(self.Main, self.IsMobile and 11 or 13)
+	stroke(self.Main, D.BDL, 1, 0.42)
 
-	-- Subtle top gradient
-	local gf = inst("Frame", self.Main, {
-		BackgroundColor3 = Color3.fromRGB(255,255,255),
+	-- Subtle inner luminance (replaces animated rainbow bar — cleaner)
+	local glow = N("Frame", self.Main, {
+		BackgroundColor3      = Color3.new(1,1,1),
 		BackgroundTransparency = 0.965,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1,0,.45,0),
+		BorderSizePixel       = 0,
+		Size                  = UDim2.new(1,0,.42,0),
 	})
-	inst("UIGradient", gf, {
-		Color = ColorSequence.new{
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(140,120,255)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(0,180,255)),
+	N("UIGradient", glow, {
+		Color    = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(120,100,255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(0,160,255)),
 		},
-		Rotation = 135,
+		Rotation = 132,
 	})
 
-	self:_drag()
-	self:_titleBar()
-	self:_sidebar()
-	self:_contentArea()
-	self:_notifyBar()
-	self:_resize()
-	self:_antiAFK()
-	self:_updateLoop()
+	-- ── build pieces ───────────────────────────────────────────
+	self:_setupDrag()
+	self:_createAnimatedBar()   -- preserved for compat (now no-op/invisible)
+	self:_createTitleBar()
+	self:_createSidebar()
 
-	-- Open animation
-	self.Main.Size = UDim2.new(0,0,0,0)
+	-- Content Area
+	self.ContentArea = N("Frame", self.Main, {
+		BackgroundColor3 = D.BG1,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0, self.SidebarWidth, 0, self.HeaderTotal),
+		Size     = UDim2.new(1,-self.SidebarWidth,1,-self.HeaderTotal),
+	})
+
+	self:_createNotifyBar()
+	self:_createStatusArea()
+	self:_setupResize()
+	self:_startAntiAFK()
+
+	-- ── open animation ─────────────────────────────────────────
+	self.Main.Size               = UDim2.new(0,0,0,0)
 	self.Main.BackgroundTransparency = 1
 	self.Shadow.ImageTransparency = 1
-	tw(self.Main, {Size=self.Size, BackgroundTransparency=0}, .45, Enum.EasingStyle.Back):Play()
-	tw(self.Shadow, {ImageTransparency=0.45}, .45):Play()
+	T(self.Main, {Size=self.Size, BackgroundTransparency=0}, .48, Enum.EasingStyle.Back):Play()
+	T(self.Shadow, {ImageTransparency=0.44}, .48):Play()
 
+	self:_startUpdateLoop()
 	return self
 end
 
--- ─────────────────────────────────────
--- TITLE BAR
--- ─────────────────────────────────────
-function NexusLib:_titleBar()
-	local bar = inst("Frame", self.Main, {
-		BackgroundColor3 = T.BG2,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1,0,0,self.TH),
-	})
-	-- bottom separator
-	inst("Frame", bar, {
-		BackgroundColor3 = T.Bdr,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,0,1,-1),
-		Size = UDim2.new(1,0,0,1),
-	})
-
-	-- accent dot
-	local dot = inst("Frame", bar, {
-		BackgroundColor3 = T.Acc,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,12,.5,-4),
-		Size = UDim2.new(0,7,0,7),
-	})
-	corner(dot, 99)
-
-	-- title
-	inst("TextLabel", bar, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,26,0,0),
-		Size = UDim2.new(0,200,1,0),
-		Font = T.FH,
-		Text = self.Title,
-		TextColor3 = T.TX0,
-		TextSize = self.FS.title,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-
-	-- ── AFK badge
-	local afkF = inst("Frame", bar, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(1,-115,.5,-7),
-		Size = UDim2.new(0,36,0,14),
-	})
-	local afkDot = inst("Frame", afkF, {
-		BackgroundColor3 = T.Green,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,0,.5,-4),
-		Size = UDim2.new(0,8,0,8),
-	})
-	corner(afkDot, 99)
-	inst("TextLabel", afkF, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,12,0,0),
-		Size = UDim2.new(0,24,1,0),
-		Font = T.FM,
-		Text = "AFK",
-		TextColor3 = T.Green,
-		TextSize = self.FS.small,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	self._afkDot = afkDot
-
-	-- ── macOS window controls
-	local cS  = self.Mobile and 16 or 18
-	local cGap = cS + 5
-
-	local function mkCtrl(col, xoff)
-		local b = inst("TextButton", bar, {
-			BackgroundColor3 = col,
-			BorderSizePixel = 0,
-			Position = UDim2.new(1, xoff, .5, -cS/2),
-			Size = UDim2.new(0,cS,0,cS),
-			Text = "",
-			AutoButtonColor = false,
-		})
-		corner(b, 99)
-		stroke(b, col:lerp(T.BG0, 0.4), 1, 0)
-		return b
-	end
-
-	local closeBtn = mkCtrl(T.Red,   -(cS + 8))
-	local minBtn   = mkCtrl(T.Yel,   -(cS + 8 + cGap))
-
-	-- icons on hover
-	local function hoverCtrl(btn, sym, symCol)
-		local lbl = inst("TextLabel", btn, {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1,0,1,0),
-			Font = T.FH,
-			Text = sym,
-			TextColor3 = symCol,
-			TextSize = cS - 4,
-			TextTransparency = 1,
-		})
-		btn.MouseEnter:Connect(function()
-			tw(btn,{BackgroundColor3 = btn.BackgroundColor3:lerp(Color3.new(1,1,1),.15)},.12):Play()
-			tw(lbl,{TextTransparency=0},.12):Play()
-		end)
-		btn.MouseLeave:Connect(function()
-			tw(btn,{BackgroundColor3 = btn.BackgroundColor3:lerp(T.BG0,.12)},.12):Play()
-			tw(lbl,{TextTransparency=1},.12):Play()
-		end)
-	end
-	hoverCtrl(closeBtn,"×", Color3.fromRGB(80,20,20))
-	hoverCtrl(minBtn,  "−", Color3.fromRGB(90,60,0))
-
-	closeBtn.MouseButton1Click:Connect(function()
-		tw(self.Main,{Size=UDim2.new(0,0,0,0),BackgroundTransparency=1},.3,Enum.EasingStyle.Quint):Play()
-		tw(self.Shadow,{ImageTransparency=1},.3):Play()
-		task.delay(.32,function() self.SG.Enabled=false end)
-	end)
-
-	minBtn.MouseButton1Click:Connect(function()
-		self._min = not self._min
-		if self._min then
-			tw(self.Main,{Size=UDim2.new(0,self.Size.X.Offset,0,self.TH)},.28,Enum.EasingStyle.Quint):Play()
-			tw(self.Shadow,{Size=UDim2.new(0,self.Size.X.Offset+40,0,self.TH+40)},.28):Play()
-			if self.RH then self.RH.Visible=false end
-		else
-			tw(self.Main,{Size=self.Size},.32,Enum.EasingStyle.Back):Play()
-			tw(self.Shadow,{Size=self.Size+UDim2.new(0,40,0,40)},.32):Play()
-			if self.RH then self.RH.Visible=true end
-		end
-	end)
-
-	self.TitleBar = bar
+-- ┌─────────────────────────────────────┐
+-- │  ANIMATED BAR  (compat stub)        │
+-- └─────────────────────────────────────┘
+-- Original called this — we keep the name so any patched scripts don't break.
+-- The visual is replaced by the inner glow above (cleaner look).
+function UILib:_createAnimatedBar()
+	-- intentionally empty — visual handled by glow frame in constructor
 end
 
--- ─────────────────────────────────────
--- SIDEBAR
--- ─────────────────────────────────────
-function NexusLib:_sidebar()
-	local sb = inst("ScrollingFrame", self.Main, {
-		BackgroundColor3 = T.BG2,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,0,0,self.TH),
-		Size = UDim2.new(0,self.SW,1,-self.TH),
-		ScrollBarThickness = 0,
-		CanvasSize = UDim2.new(0,0,0,0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-	})
-	-- right border
-	inst("Frame", sb, {
-		BackgroundColor3 = T.Bdr,
-		BorderSizePixel = 0,
-		Position = UDim2.new(1,-1,0,0),
-		Size = UDim2.new(0,1,1,0),
-	})
-	-- "NAVIGATION" label
-	inst("TextLabel", sb, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,10,0,10),
-		Size = UDim2.new(1,-10,0,10),
-		Font = T.FM,
-		Text = "NAVIGATION",
-		TextColor3 = T.TXD,
-		TextSize = 7,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	self.Sidebar = sb
-	self._tabIdx = 0
-end
-
--- ─────────────────────────────────────
--- CONTENT AREA
--- ─────────────────────────────────────
-function NexusLib:_contentArea()
-	self.CA = inst("Frame", self.Main, {
-		BackgroundColor3 = T.BG1,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,self.SW,0,self.TH),
-		Size = UDim2.new(1,-self.SW,1,-self.TH),
-	})
-end
-
--- ─────────────────────────────────────
--- NOTIFY BAR
--- ─────────────────────────────────────
-function NexusLib:_notifyBar()
-	local m = self.CP
-	self.NF = inst("Frame", self.Main, {
-		BackgroundColor3 = Color3.fromRGB(18,26,55),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,self.SW+m,1,-28),
-		Size = UDim2.new(1,-(self.SW+m*2),0,22),
-		ClipsDescendants = true,
-	})
-	corner(self.NF, 6)
-
-	self.NL = inst("TextLabel", self.NF, {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1,0,1,0),
-		Font = T.FM,
-		Text = "",
-		TextColor3 = T.TX0,
-		TextSize = self.FS.small + 1,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTransparency = 1,
-	})
-	inst("UIPadding", self.NL, {PaddingLeft=UDim.new(0,10)})
-	self._nBusy = false
-end
-
--- ─────────────────────────────────────
--- DRAG
--- ─────────────────────────────────────
-function NexusLib:_drag()
-	local drag, dinp, ds, sp = false
-	self.Main.InputBegan:Connect(function(i)
-		if self._rsz then return end
-		if i.UserInputType==Enum.UserInputType.MouseButton1
-		or i.UserInputType==Enum.UserInputType.Touch then
-			drag=true; ds=i.Position; sp=self.Main.Position
-			i.Changed:Connect(function()
-				if i.UserInputState==Enum.UserInputState.End then drag=false end
-			end)
-		end
-	end)
-	self.Main.InputChanged:Connect(function(i)
-		if i.UserInputType==Enum.UserInputType.MouseMovement
-		or i.UserInputType==Enum.UserInputType.Touch then dinp=i end
-	end)
-	UIS.InputChanged:Connect(function(i)
-		if i==dinp and drag and not self._rsz then
-			local d=i.Position-ds
-			local p=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)
-			self.Main.Position=p; self.Shadow.Position=p
-		end
-	end)
-end
-
--- ─────────────────────────────────────
--- RESIZE
--- ─────────────────────────────────────
-function NexusLib:_resize()
-	local sc  = screen()
-	local minW = self.SW + (self.Mobile and 100 or 160)
-	local minH = self.TH  + (self.Mobile and 70  or 90)
-	local maxW = math.min(sc.X-10, 1400)
-	local maxH = math.min(sc.Y-20, 900)
-	local hs   = self.Mobile and 22 or 20
-
-	local rh = inst("Frame", self.Main, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(1,-hs,1,-hs),
-		Size = UDim2.new(0,hs,0,hs),
-		ZIndex = 20,
-	})
-	-- grip dots
-	local dots = {}
-	local ds = self.Mobile and 2 or 2
-	local dg = 4
-	for r=0,2 do for c=0,2-r do
-		local d = inst("Frame", rh, {
-			BackgroundColor3 = T.BdrL,
-			BackgroundTransparency = 0.3,
-			BorderSizePixel = 0,
-			Size = UDim2.new(0,ds,0,ds),
-			AnchorPoint = Vector2.new(1,1),
-			Position = UDim2.new(1,-(2+c*(ds+dg)),1,-(2+r*(ds+dg))),
-			ZIndex = 21,
-		})
-		corner(d, 99)
-		dots[#dots+1]=d
-	end end
-
-	local hp = self.Mobile and 10 or 7
-	local rbtn = inst("TextButton", rh, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,-hp,0,-hp),
-		Size = UDim2.new(1,hp*2,1,hp*2),
-		Text = "", ZIndex=22,
-		AutoButtonColor=false,
-	})
-
-	local resz,rs,ssz,spos=false
-	local function dotCol(c,t)
-		for _,d in ipairs(dots) do tw(d,{BackgroundColor3=c,BackgroundTransparency=t},.15):Play() end
-	end
-
-	rbtn.InputBegan:Connect(function(i)
-		if self._min then return end
-		if i.UserInputType==Enum.UserInputType.MouseButton1
-		or i.UserInputType==Enum.UserInputType.Touch then
-			resz=true; self._rsz=true
-			rs=i.Position
-			ssz=Vector2.new(self.Main.Size.X.Offset,self.Main.Size.Y.Offset)
-			spos=self.Main.Position
-			dotCol(T.AccLt,0)
-			i.Changed:Connect(function()
-				if i.UserInputState==Enum.UserInputState.End then
-					resz=false; self._rsz=false; dotCol(T.BdrL,0.3)
-				end
-			end)
-		end
-	end)
-	rbtn.MouseEnter:Connect(function() if not resz then dotCol(T.Acc,0) end end)
-	rbtn.MouseLeave:Connect(function() if not resz then dotCol(T.BdrL,0.3) end end)
-
-	UIS.InputChanged:Connect(function(i)
-		if resz and (i.UserInputType==Enum.UserInputType.MouseMovement
-		or i.UserInputType==Enum.UserInputType.Touch) then
-			local d=i.Position-rs
-			local nw=math.clamp(ssz.X+d.X,minW,maxW)
-			local nh=math.clamp(ssz.Y+d.Y,minH,maxH)
-			local dw,dh=nw-ssz.X,nh-ssz.Y
-			local ns=UDim2.new(0,nw,0,nh)
-			local np=UDim2.new(spos.X.Scale,spos.X.Offset+dw/2,spos.Y.Scale,spos.Y.Offset+dh/2)
-			self.Main.Size=ns; self.Main.Position=np
-			self.Size=ns
-			self.Shadow.Size=ns+UDim2.new(0,40,0,40)
-			self.Shadow.Position=np
-		end
-	end)
-	self.RH=rh
-end
-
--- ─────────────────────────────────────
--- ANTI-AFK
--- ─────────────────────────────────────
-function NexusLib:_antiAFK()
-	local p=PLR.LocalPlayer
-	if p then
-		self._ic=p.Idled:Connect(function()
+-- ┌─────────────────────────────────────┐
+-- │  ANTI-AFK  (identical logic)        │
+-- └─────────────────────────────────────┘
+function UILib:_startAntiAFK()
+	local player = Players.LocalPlayer
+	if player then
+		self._antiAfkIdleConnection = player.Idled:Connect(function()
 			pcall(function()
-				VIM:SendKeyEvent(true,Enum.KeyCode.Space,false,game)
-				task.wait(.1)
-				VIM:SendKeyEvent(false,Enum.KeyCode.Space,false,game)
+				VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.Space, false, game)
+				task.wait(0.1)
+				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
 			end)
 		end)
 	end
-	self._aa=true
+	self._antiAfkActive = true
 	task.spawn(function()
-		while self._aa and self.SG and self.SG.Parent do
+		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
 			task.wait(60)
+			if not self._antiAfkActive then break end
 			pcall(function()
-				VIM:SendKeyEvent(true,Enum.KeyCode.F13,false,game)
-				task.wait(.1)
-				VIM:SendKeyEvent(false,Enum.KeyCode.F13,false,game)
+				VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.F13, false, game)
+				task.wait(0.1)
+				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F13, false, game)
 			end)
 		end
 	end)
 	task.spawn(function()
-		while self._aa and self.SG and self.SG.Parent do
+		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
 			task.wait(120)
+			if not self._antiAfkActive then break end
 			pcall(function()
-				VIM:SendMouseMoveEvent(math.random(100,500),math.random(100,500),game)
+				VirtualInputManager:SendMouseMoveEvent(math.random(100,500), math.random(100,500), game)
 			end)
 		end
 	end)
-	-- blink afk dot
+	self:_createAntiAfkIndicator()
+end
+
+function UILib:_createAntiAfkIndicator()
+	-- Built inline inside _createTitleBar; this just starts the blink loop.
 	task.spawn(function()
-		while self._aa and self.SG and self.SG.Parent do
-			if self._afkDot and self._afkDot.Parent then
-				tw(self._afkDot,{BackgroundTransparency=0.75},.85):Play()
+		local dot = self._antiAfkDot
+		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
+			if dot and dot.Parent then
+				T(dot, {BackgroundTransparency=0.78}, .85, Enum.EasingStyle.Sine):Play()
 				task.wait(.85)
-				tw(self._afkDot,{BackgroundTransparency=0},.85):Play()
+				T(dot, {BackgroundTransparency=0},    .85, Enum.EasingStyle.Sine):Play()
 				task.wait(.85)
 			else break end
 		end
 	end)
 end
 
--- ─────────────────────────────────────
--- UPDATE LOOP
--- ─────────────────────────────────────
-function NexusLib:_updateLoop()
-	task.spawn(function()
-		while self.SG and self.SG.Parent do
-			for _,cb in ipairs(self.CBs) do pcall(cb) end
-			task.wait(.5)
+-- ┌─────────────────────────────────────┐
+-- │  DRAG  (same logic)                 │
+-- └─────────────────────────────────────┘
+function UILib:_setupDrag()
+	local dragging, dragInput, dragStart, startPos
+
+	self.Main.InputBegan:Connect(function(input)
+		if self._resizing then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging  = true
+			dragStart = input.Position
+			startPos  = self.Main.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+
+	self.Main.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging and not self._resizing then
+			local d = input.Position - dragStart
+			local p = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X,
+			                    startPos.Y.Scale, startPos.Y.Offset+d.Y)
+			self.Main.Position   = p
+			self.Shadow.Position = p
 		end
 	end)
 end
 
--- ─────────────────────────────────────
--- PUBLIC: AddTab
--- ─────────────────────────────────────
-function NexusLib:AddTab(cfg)
-	local name = cfg.Name or "Tab"
-	local icon = cfg.Icon or "○"
-	self._tabIdx = self._tabIdx+1
-	local idx = self._tabIdx
-	local px = self.Mobile and 5 or 6
+-- ┌─────────────────────────────────────┐
+-- │  RESIZE  (same logic, better dots)  │
+-- └─────────────────────────────────────┘
+function UILib:_setupResize()
+	local hs  = self.IsMobile and 22 or 20
+	local ds  = 2
+	local dg  = 4
+	local scr = getScreenSize()
+	local minW = self.SidebarWidth + (self.IsMobile and 100 or 180)
+	local minH = self.HeaderTotal  + (self.IsMobile and 80  or 120)
+	local maxW = math.min(scr.X-10, 1400)
+	local maxH = math.min(scr.Y-20, 1000)
+
+	local handle = N("Frame", self.Main, {
+		Name                 = "ResizeHandle",
+		BackgroundTransparency = 1,
+		Position = UDim2.new(1,-hs,1,-hs),
+		Size     = UDim2.new(0,hs,0,hs),
+		ZIndex   = 10,
+	})
+
+	local dots = {}
+	for row=0,2 do for col=0,2-row do
+		local d = N("Frame", handle, {
+			BackgroundColor3     = D.BDL,
+			BackgroundTransparency = 0.25,
+			BorderSizePixel      = 0,
+			Size = UDim2.new(0,ds,0,ds),
+			AnchorPoint = Vector2.new(1,1),
+			Position = UDim2.new(1,-(2+col*(ds+dg)), 1,-(2+row*(ds+dg))),
+			ZIndex = 10,
+		})
+		corner(d, 99)
+		dots[#dots+1] = d
+	end end
+
+	local hp  = self.IsMobile and 10 or 6
+	local btn = N("TextButton", handle, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,-hp,0,-hp),
+		Size     = UDim2.new(1,hp*2,1,hp*2),
+		Text     = "", ZIndex = 11,
+		AutoButtonColor = false,
+	})
+
+	local resizing = false
+	local resizeStart, startSize, startPos
+
+	local function dotStyle(col, tr)
+		for _,d in ipairs(dots) do
+			if d and d.Parent then
+				T(d, {BackgroundColor3=col, BackgroundTransparency=tr}, .15):Play()
+			end
+		end
+	end
+
+	btn.InputBegan:Connect(function(input)
+		if self._minimized then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = true; self._resizing = true
+			resizeStart = input.Position
+			startSize   = Vector2.new(self.Main.Size.X.Offset, self.Main.Size.Y.Offset)
+			startPos    = self.Main.Position
+			dotStyle(D.ACX, 0)
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					resizing = false; self._resizing = false
+					dotStyle(D.BDL, 0.25)
+				end
+			end)
+		end
+	end)
+	btn.MouseEnter:Connect(function() if not resizing then dotStyle(D.ACL, 0) end end)
+	btn.MouseLeave:Connect(function() if not resizing then dotStyle(D.BDL, 0.25) end end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - resizeStart
+			local nw    = math.clamp(startSize.X+delta.X, minW, maxW)
+			local nh    = math.clamp(startSize.Y+delta.Y, minH, maxH)
+			local dw, dh = nw-startSize.X, nh-startSize.Y
+			local ns    = UDim2.new(0,nw,0,nh)
+			local np    = UDim2.new(startPos.X.Scale, startPos.X.Offset+dw/2,
+			                        startPos.Y.Scale, startPos.Y.Offset+dh/2)
+			self.Main.Size     = ns
+			self.Main.Position = np
+			self.Size          = ns   -- so minimize restores correctly
+			self.Shadow.Size   = ns + UDim2.new(0,44,0,44)
+			self.Shadow.Position = np
+		end
+	end)
+
+	self.ResizeHandle = handle
+end
+
+-- ┌─────────────────────────────────────┐
+-- │  TITLE BAR  (premium macOS-style)   │
+-- └─────────────────────────────────────┘
+function UILib:_createTitleBar()
+	self.TitleBar = N("Frame", self.Main, {
+		BackgroundColor3 = D.BG2,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,0,0,self.TopBarH),
+		Size     = UDim2.new(1,0,0,self.TitleBarHeight),
+	})
+	-- Bottom separator line
+	N("Frame", self.TitleBar, {
+		BackgroundColor3 = D.BD,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,0,1,-1),
+		Size     = UDim2.new(1,0,0,1),
+	})
+
+	-- ── Accent pulse dot ───────────────────────────────────────
+	local adot = N("Frame", self.TitleBar, {
+		BackgroundColor3 = D.ACC,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,11,.5,-4),
+		Size     = UDim2.new(0,7,0,7),
+	})
+	corner(adot, 99)
+	task.spawn(function()
+		while self.ScreenGui and self.ScreenGui.Parent do
+			T(adot, {BackgroundColor3=D.ACX}, 1.4, Enum.EasingStyle.Sine):Play(); task.wait(1.4)
+			T(adot, {BackgroundColor3=D.ACC}, 1.4, Enum.EasingStyle.Sine):Play(); task.wait(1.4)
+		end
+	end)
+
+	-- ── Title label ────────────────────────────────────────────
+	N("TextLabel", self.TitleBar, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,25,0,0),
+		Size     = UDim2.new(0, self.IsMobile and 155 or 210, 1, 0),
+		Font     = D.FB,
+		Text     = self.Title,
+		TextColor3 = D.T0,
+		TextSize   = self.FontTitle,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate   = Enum.TextTruncate.AtEnd,
+	})
+
+	-- ── AFK badge ──────────────────────────────────────────────
+	local afkX = self.IsMobile and -88 or -114
+	local afkF = N("Frame", self.TitleBar, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(1,afkX,.5,-7),
+		Size     = UDim2.new(0,36,0,14),
+	})
+	local afkDot = N("Frame", afkF, {
+		BackgroundColor3 = D.GRN,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,0,.5,-4),
+		Size     = UDim2.new(0,8,0,8),
+	})
+	corner(afkDot, 99)
+	N("TextLabel", afkF, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,12,0,0),
+		Size     = UDim2.new(0,24,1,0),
+		Font     = D.FSB,
+		Text     = "AFK",
+		TextColor3 = D.GRN,
+		TextSize   = self.FontSmall,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+	self._antiAfkDot = afkDot
+
+	-- ── macOS window controls ──────────────────────────────────
+	local cS  = self.IsMobile and 16 or 18
+	local gap = cS + 5
+
+	local function mkCtrl(col, xOff, sym)
+		local b = N("TextButton", self.TitleBar, {
+			BackgroundColor3 = col,
+			BorderSizePixel  = 0,
+			Position = UDim2.new(1,xOff,.5,-cS/2),
+			Size     = UDim2.new(0,cS,0,cS),
+			Text     = "",
+			AutoButtonColor = false,
+		})
+		corner(b, 99)
+		stroke(b, col:Lerp(D.BG0, 0.45), 1, 0)
+		local ico = N("TextLabel", b, {
+			BackgroundTransparency = 1,
+			Size     = UDim2.new(1,0,1,0),
+			Font     = D.FB,
+			Text     = sym,
+			TextColor3 = col:Lerp(D.BG0, 0.5),
+			TextSize   = cS-4,
+			TextTransparency = 1,
+		})
+		b.MouseEnter:Connect(function()
+			T(b,   {BackgroundColor3 = col:Lerp(Color3.new(1,1,1),.14)}, .12):Play()
+			T(ico, {TextTransparency = 0}, .12):Play()
+		end)
+		b.MouseLeave:Connect(function()
+			T(b,   {BackgroundColor3 = col}, .12):Play()
+			T(ico, {TextTransparency = 1}, .12):Play()
+		end)
+		return b
+	end
+
+	-- Close (red)
+	local closeBtn = mkCtrl(D.RED, -(cS+8), "×")
+	closeBtn.MouseButton1Click:Connect(function()
+		self.ScreenGui.Enabled = false
+	end)
+
+	-- Minimize (yellow)
+	local minBtn = mkCtrl(D.YLW, -(cS+8+gap), "−")
+	minBtn.MouseButton1Click:Connect(function()
+		self._minimized = not self._minimized
+		if self._minimized then
+			T(self.Main,   {Size=UDim2.new(0,self.Size.X.Offset,0,self.TitleBarHeight)}, .3, Enum.EasingStyle.Quart):Play()
+			T(self.Shadow, {Size=UDim2.new(0,self.Size.X.Offset+44,0,self.TitleBarHeight+44)}, .3):Play()
+			if self.ResizeHandle then self.ResizeHandle.Visible = false end
+		else
+			T(self.Main,   {Size=self.Size}, .3, Enum.EasingStyle.Back):Play()
+			T(self.Shadow, {Size=self.Size+UDim2.new(0,44,0,44)}, .3):Play()
+			if self.ResizeHandle then self.ResizeHandle.Visible = true end
+		end
+	end)
+end
+
+-- ┌─────────────────────────────────────┐
+-- │  STATUS AREA  (same public API)     │
+-- └─────────────────────────────────────┘
+function UILib:_createStatusArea()
+	if self.IsMobile then return end
+	local sf = N("Frame", self.TitleBar, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,230,0,0),
+		Size     = UDim2.new(0,180,1,0),
+	})
+	for i=1,3 do
+		self.StatusLabels[i] = N("TextLabel", sf, {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0,0,0,3+(i-1)*14),
+			Size     = UDim2.new(1,0,0,14),
+			Font     = D.FSB,
+			TextSize = 9,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextColor3 = D.T2,
+			Text = "",
+		})
+	end
+end
+
+function UILib:SetStatus(line, text, color)
+	if self.StatusLabels[line] then
+		self.StatusLabels[line].Text = text
+		if color then self.StatusLabels[line].TextColor3 = color end
+	end
+end
+
+-- ┌─────────────────────────────────────┐
+-- │  SIDEBAR  (same structure, new look)│
+-- └─────────────────────────────────────┘
+function UILib:_createSidebar()
+	self.Sidebar = N("ScrollingFrame", self.Main, {
+		BackgroundColor3    = D.BG2,
+		BorderSizePixel     = 0,
+		Position = UDim2.new(0,0,0,self.HeaderTotal),
+		Size     = UDim2.new(0,self.SidebarWidth,1,-self.HeaderTotal),
+		ScrollBarThickness  = 2,
+		ScrollBarImageColor3 = D.BDL,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize          = UDim2.new(0,0,0,0),
+	})
+	-- Right border
+	N("Frame", self.Sidebar, {
+		BackgroundColor3 = D.BD,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(1,-1,0,0),
+		Size     = UDim2.new(0,1,1,0),
+	})
+	-- "NAVIGATION" micro-label
+	N("TextLabel", self.Sidebar, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,9,0,10),
+		Size     = UDim2.new(1,-9,0,10),
+		Font     = D.FSB,
+		Text     = "NAVIGATION",
+		TextColor3 = D.T3,
+		TextSize   = 7,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+	self._tabIndex = 0
+end
+
+-- ┌─────────────────────────────────────┐
+-- │  NOTIFY BAR  (same public API)      │
+-- └─────────────────────────────────────┘
+function UILib:_createNotifyBar()
+	local margin = self.IsMobile and 5 or 8
+	local h = self.IsMobile and 19 or 23
+
+	self._notifyFrame = N("Frame", self.Main, {
+		BackgroundColor3   = Color3.fromRGB(14,22,50),
+		BackgroundTransparency = 1,
+		BorderSizePixel    = 0,
+		Position = UDim2.new(0, self.SidebarWidth+margin, 1, -(h+7)),
+		Size     = UDim2.new(1, -(self.SidebarWidth+margin*2), 0, h),
+		ClipsDescendants   = true,
+	})
+	corner(self._notifyFrame, 6)
+
+	self.NotifyBar = N("TextLabel", self._notifyFrame, {
+		BackgroundTransparency = 1,
+		Size    = UDim2.new(1,0,1,0),
+		Font    = D.FSB,
+		Text    = "",
+		TextColor3 = D.T0,
+		TextSize   = self.FontSmall + 1,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTransparency = 1,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	padI(self.NotifyBar, 10)
+	self._notifyDebounce = false
+end
+
+function UILib:Notify(msg, color)
+	if self._notifyDebounce then return end
+	self._notifyDebounce = true
+
+	local col = color or D.GRN
+	self.NotifyBar.Text            = "  " .. msg
+	self.NotifyBar.TextColor3      = col
+	self.NotifyBar.TextTransparency = 0
+	T(self._notifyFrame, {BackgroundTransparency=0.1}, .18):Play()
+
+	-- Left accent line
+	local line = N("Frame", self._notifyFrame, {
+		BackgroundColor3 = col,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,0,0,0),
+		Size     = UDim2.new(0,2,1,0),
+	})
+	corner(line, 99)
+
+	task.delay(2, function()
+		T(self._notifyFrame, {BackgroundTransparency=1}, .35):Play()
+		T(self.NotifyBar,    {TextTransparency=1},       .35):Play()
+		task.delay(.35, function()
+			pcall(function() line:Destroy() end)
+			self._notifyDebounce = false
+		end)
+	end)
+end
+
+-- ┌─────────────────────────────────────┐
+-- │  AddTab  (same signature)           │
+-- └─────────────────────────────────────┘
+function UILib:AddTab(config)
+	local tabName = config.Name or "Tab"
+	local tabIcon = config.Icon or "○"
+
+	self._tabIndex = self._tabIndex + 1
+	local index = self._tabIndex
+	local px    = self.IsMobile and 5 or 6
 
 	-- Tab button
-	local btn = inst("TextButton", self.Sidebar, {
-		BackgroundColor3 = T.BG2,
+	local btn = N("TextButton", self.Sidebar, {
+		BackgroundColor3     = D.BG2,
 		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,px,0,26+(idx-1)*self.TBG),
-		Size = UDim2.new(1,-px*2,0,self.TBH),
-		Text = "",
+		BorderSizePixel      = 0,
+		Position = UDim2.new(0,px,0, 26+(index-1)*self.TabButtonSpacing),
+		Size     = UDim2.new(1,-px*2,0,self.TabButtonHeight),
+		Text     = "",
 		AutoButtonColor = false,
 	})
 	corner(btn, 6)
 
-	-- Active bar
-	inst("Frame", btn, {
-		Name = "Bar",
-		BackgroundColor3 = T.Acc,
+	-- Active indicator (left edge bar)
+	local indicator = N("Frame", btn, {
+		Name             = "Indicator",
+		BackgroundColor3 = D.ACC,
 		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
+		BorderSizePixel  = 0,
 		Position = UDim2.new(0,0,.15,0),
-		Size = UDim2.new(0,2,.7,0),
+		Size     = UDim2.new(0,2,.7,0),
 	})
+	corner(indicator, 99)
 
-	-- Icon
-	inst("TextLabel", btn, {
-		Name = "Ico",
+	-- Icon label
+	N("TextLabel", btn, {
+		Name               = "Icon",
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0,8,0,0),
-		Size = UDim2.new(0,18,1,0),
-		Font = T.FM,
-		Text = icon,
-		TextColor3 = T.TX2,
-		TextSize = self.FS.tab+1,
+		Size     = UDim2.new(0,18,1,0),
+		Font     = D.FSB,
+		Text     = tabIcon,
+		TextColor3 = D.T2,
+		TextSize   = self.FontTab + 1,
 	})
 
-	-- Label
-	inst("TextLabel", btn, {
-		Name = "Lbl",
+	-- Name label  (kept as "Label" for SwitchTab compat)
+	N("TextLabel", btn, {
+		Name               = "Label",
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0,28,0,0),
-		Size = UDim2.new(1,-32,1,0),
-		Font = T.FM,
-		Text = name,
-		TextColor3 = T.TX2,
-		TextSize = self.FS.tab,
+		Size     = UDim2.new(1,-32,1,0),
+		Font     = D.FSB,
+		Text     = tabName,
+		TextColor3 = D.T2,
+		TextSize   = self.FontTab,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextTruncate   = Enum.TextTruncate.AtEnd,
 	})
 
-	-- Page
-	local page = inst("ScrollingFrame", self.CA, {
+	-- Tab page (scrollable)
+	local cp   = self.SectionPadding
+	local page = N("ScrollingFrame", self.ContentArea, {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Position = UDim2.new(0,0,0,0),
-		Size = UDim2.new(1,0,1,0),
-		ScrollBarThickness = 2,
-		ScrollBarImageColor3 = T.BdrL,
-		CanvasSize = UDim2.new(0,0,0,0),
+		Size     = UDim2.new(1,0,1,0),
+		ScrollBarThickness  = 2,
+		ScrollBarImageColor3 = D.BDL,
+		CanvasSize          = UDim2.new(0,0,0,0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		Visible = false,
+		Visible             = false,
 	})
-	inst("UIPadding", page, {
-		PaddingLeft   = UDim.new(0,self.CP),
-		PaddingRight  = UDim.new(0,self.CP+3),
-		PaddingTop    = UDim.new(0,self.CP),
-		PaddingBottom = UDim.new(0,self.CP+4),
-	})
-	listLayout(page, self.Mobile and 6 or 7)
+	padI(page, cp, cp+3, cp, cp)
+	vList(page, self.IsMobile and 6 or 7)
 
-	self.TBtns[name] = btn
-	self.TPages[name] = page
+	self.TabButtons[tabName] = btn
+	self.TabPages[tabName]   = page
 
-	btn.MouseButton1Click:Connect(function() self:SwitchTab(name) end)
+	btn.MouseButton1Click:Connect(function() self:SwitchTab(tabName) end)
+
 	btn.MouseEnter:Connect(function()
-		if self.Active~=name then
-			tw(btn,{BackgroundTransparency=0.86},.14):Play()
+		if self.ActiveTab ~= tabName then
+			T(btn, {BackgroundTransparency=0.87}, .14):Play()
 		end
 	end)
 	btn.MouseLeave:Connect(function()
-		if self.Active~=name then
-			tw(btn,{BackgroundTransparency=1},.14):Play()
+		if self.ActiveTab ~= tabName then
+			T(btn, {BackgroundTransparency=1}, .14):Play()
 		end
 	end)
 
-	if idx==1 then task.defer(function() self:SwitchTab(name) end) end
+	if index == 1 then task.defer(function() self:SwitchTab(tabName) end) end
 
-	local tab={Name=name,Page=page,Lib=self,_o=0}
-	setmetatable(tab,{__index=NexusLib._TabM})
-	table.insert(self.Tabs,tab)
+	local tab = { Name=tabName, Page=page, Library=self, _sectionOrder=0 }
+	setmetatable(tab, {__index = UILib._TabMethods})
+	table.insert(self.Tabs, tab)
 	return tab
 end
 
--- ─────────────────────────────────────
--- PUBLIC: SwitchTab
--- ─────────────────────────────────────
-function NexusLib:SwitchTab(name)
-	if self.Active==name then return end
-	self.Active=name
-	for n,btn in pairs(self.TBtns) do
-		local act=(n==name)
-		local lbl=btn:FindFirstChild("Lbl")
-		local ico=btn:FindFirstChild("Ico")
-		local bar=btn:FindFirstChild("Bar")
-		tw(btn,{BackgroundTransparency=act and 0.88 or 1},.18):Play()
-		if lbl then tw(lbl,{TextColor3=act and T.TX0 or T.TX2},.18):Play() end
-		if ico then tw(ico,{TextColor3=act and T.AccLt or T.TX2},.18):Play() end
-		if bar then tw(bar,{BackgroundTransparency=act and 0 or 1},.18):Play() end
+-- ┌─────────────────────────────────────┐
+-- │  SwitchTab  (same logic, new style) │
+-- └─────────────────────────────────────┘
+function UILib:SwitchTab(name)
+	if self.ActiveTab == name then return end
+	self.ActiveTab = name
+
+	for tabName, btn in pairs(self.TabButtons) do
+		local ind  = btn:FindFirstChild("Indicator")
+		local lbl  = btn:FindFirstChild("Label")
+		local ico  = btn:FindFirstChild("Icon")
+		local act  = (tabName == name)
+
+		T(btn, {BackgroundTransparency = act and 0.88 or 1}, .18):Play()
+		if lbl then T(lbl, {TextColor3 = act and D.T0  or D.T2}, .18):Play() end
+		if ico then T(ico, {TextColor3 = act and D.ACL or D.T2}, .18):Play() end
+		if ind then T(ind, {BackgroundTransparency = act and 0 or 1}, .18):Play() end
 	end
-	for n,pg in pairs(self.TPages) do
-		pg.Visible=(n==name)
+
+	for tabName, page in pairs(self.TabPages) do
+		page.Visible = (tabName == name)
 	end
 end
 
--- ─────────────────────────────────────
--- PUBLIC: Notify
--- ─────────────────────────────────────
-function NexusLib:Notify(msg, col, icon)
-	if self._nBusy then return end
-	self._nBusy=true
-	local c=col or T.Green
-	self.NL.Text = (icon or "◆").."  "..msg
-	self.NL.TextColor3=c
-	tw(self.NF,{BackgroundTransparency=0.1},.18):Play()
-	tw(self.NL,{TextTransparency=0},.18):Play()
-	-- accent line
-	local ln=inst("Frame",self.NF,{
-		BackgroundColor3=c,BorderSizePixel=0,
-		Position=UDim2.new(0,0,0,0),Size=UDim2.new(0,2,1,0),
-	})
-	corner(ln,99)
-	task.delay(2.2,function()
-		tw(self.NF,{BackgroundTransparency=1},.35):Play()
-		tw(self.NL,{TextTransparency=1},.35):Play()
-		task.delay(.35,function() pcall(function() ln:Destroy() end); self._nBusy=false end)
+-- ┌─────────────────────────────────────┐
+-- │  OnUpdate / Update Loop  (same)     │
+-- └─────────────────────────────────────┘
+function UILib:OnUpdate(callback)
+	table.insert(self.UpdateCallbacks, callback)
+end
+
+function UILib:_startUpdateLoop()
+	task.spawn(function()
+		while self.ScreenGui and self.ScreenGui.Parent do
+			for _, cb in ipairs(self.UpdateCallbacks) do pcall(cb) end
+			task.wait(0.5)
+		end
 	end)
 end
 
--- PUBLIC utility
-function NexusLib:OnUpdate(cb) table.insert(self.CBs,cb) end
+-- ┌─────────────────────────────────────┐
+-- │  CreateToggleButton  (same sig)     │
+-- └─────────────────────────────────────┘
+function UILib:CreateToggleButton(config)
+	config = config or {}
+	local icon = config.Icon or "🌾"
 
-function NexusLib:Destroy()
-	self._aa=false
-	if self._ic then self._ic:Disconnect() end
-	if self.SG then self.SG:Destroy() end
-	local t=game.CoreGui:FindFirstChild("NexusLib_Toggle")
-	if t then t:Destroy() end
-end
-
-function NexusLib:CreateToggleButton(cfg)
-	cfg=cfg or {}
-	local old=game.CoreGui:FindFirstChild("NexusLib_Toggle")
+	local old = game.CoreGui:FindFirstChild("UILib_Toggle")
 	if old then old:Destroy() end
-	local sg=inst("ScreenGui",game.CoreGui,{Name="NexusLib_Toggle",ResetOnSpawn=false})
-	local sz=self.Mobile and 36 or 44
 
-	local outer=inst("Frame",sg,{
-		AnchorPoint=Vector2.new(.5,.5),
-		BackgroundColor3=T.BG3,
-		BorderSizePixel=0,
-		Position=UDim2.new(0,sz/2+6,.5,0),
-		Size=UDim2.new(0,sz,0,sz),
+	local sg   = N("ScreenGui", game.CoreGui, {Name="UILib_Toggle", ResetOnSpawn=false})
+	local sz   = self.IsMobile and 38 or 48
+
+	local outer = N("Frame", sg, {
+		AnchorPoint      = Vector2.new(.5,.5),
+		BackgroundColor3 = D.BG3,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,sz/2+6,.5,0),
+		Size     = UDim2.new(0,sz,0,sz),
 	})
-	corner(outer,10)
-	stroke(outer,T.Acc,1,0.35)
+	corner(outer, 12)
+	stroke(outer, D.ACC, 1, 0.35)
 
-	inst("TextLabel",outer,{
-		BackgroundTransparency=1,
-		Size=UDim2.new(1,0,1,0),
-		Font=T.FH,
-		Text=cfg.Icon or "⚡",
-		TextSize=self.Mobile and 18 or 22,
-	})
-
-	local btn=inst("TextButton",outer,{
-		BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),
-		Text="",Draggable=true,
+	N("TextLabel", outer, {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1,0,1,0),
+		Font = D.FB,
+		Text = icon,
+		TextSize = self.IsMobile and 19 or 24,
 	})
 
+	local tbtn = N("TextButton", outer, {
+		BackgroundTransparency = 1,
+		Size     = UDim2.new(1,0,1,0),
+		Text     = "",
+		Draggable = true,
+	})
+
+	-- Subtle bg pulse
 	task.spawn(function()
 		while sg and sg.Parent do
-			tw(outer,{BackgroundColor3=T.BG4},.9,Enum.EasingStyle.Sine):Play(); task.wait(.9)
-			tw(outer,{BackgroundColor3=T.BG3},.9,Enum.EasingStyle.Sine):Play(); task.wait(.9)
+			T(outer, {BackgroundColor3=D.BG4}, .95, Enum.EasingStyle.Sine):Play(); task.wait(.95)
+			T(outer, {BackgroundColor3=D.BG3}, .95, Enum.EasingStyle.Sine):Play(); task.wait(.95)
 		end
 	end)
 
-	btn.MouseButton1Click:Connect(function()
-		self.SG.Enabled=not self.SG.Enabled
+	tbtn.MouseButton1Click:Connect(function()
+		self.ScreenGui.Enabled = not self.ScreenGui.Enabled
 	end)
 	return sg
 end
 
--- ═════════════════════════════════════
--- TAB METHODS
--- ═════════════════════════════════════
-NexusLib._TabM = {}
-
-function NexusLib._TabM:AddSection(cfg)
-	self._o=self._o+1
-	local lib=self.Lib
-	local title=cfg.Title or "Section"
-
-	local sec=inst("Frame",self.Page,{
-		BackgroundColor3=T.BG3,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,0),
-		AutomaticSize=Enum.AutomaticSize.Y,
-		LayoutOrder=cfg.Order or self._o,
-	})
-	corner(sec, 8)
-	stroke(sec, T.Bdr, 1, 0.2)
-
-	-- header
-	local hdr=inst("Frame",sec,{
-		BackgroundColor3=T.BG4,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,lib.Mobile and 22 or 24),
-	})
-	-- stripe accent
-	local stripe=inst("Frame",hdr,{
-		BackgroundColor3=T.Acc,
-		BorderSizePixel=0,
-		Size=UDim2.new(0,2,1,0),
-	})
-	corner(stripe,99)
-	inst("TextLabel",hdr,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,10,0,0),
-		Size=UDim2.new(1,-14,1,0),
-		Font=T.FM,
-		Text=string.upper(title),
-		TextColor3=T.TX1,
-		TextSize=lib.FS.sec,
-		TextXAlignment=Enum.TextXAlignment.Left,
-	})
-
-	-- content wrapper
-	local wrap=inst("Frame",sec,{
-		BackgroundTransparency=1,
-		BorderSizePixel=0,
-		Position=UDim2.new(0,0,0,lib.Mobile and 22 or 24),
-		Size=UDim2.new(1,0,0,0),
-		AutomaticSize=Enum.AutomaticSize.Y,
-	})
-	inst("UIPadding",wrap,{
-		PaddingLeft=UDim.new(0,lib.Mobile and 7 or 8),
-		PaddingRight=UDim.new(0,lib.Mobile and 7 or 8),
-		PaddingTop=UDim.new(0,lib.Mobile and 5 or 6),
-		PaddingBottom=UDim.new(0,lib.Mobile and 6 or 7),
-	})
-	listLayout(wrap, lib.Mobile and 4 or 5)
-
-	local s={Frame=sec,W=wrap,Lib=lib,_e=0}
-	setmetatable(s,{__index=NexusLib._SecM})
-	return s
+-- ┌─────────────────────────────────────┐
+-- │  Destroy  (same)                    │
+-- └─────────────────────────────────────┘
+function UILib:Destroy()
+	self._antiAfkActive = false
+	if self._antiAfkIdleConnection then
+		self._antiAfkIdleConnection:Disconnect()
+		self._antiAfkIdleConnection = nil
+	end
+	if self.ScreenGui then self.ScreenGui:Destroy() end
+	local t = game.CoreGui:FindFirstChild("UILib_Toggle")
+	if t then t:Destroy() end
 end
 
-function NexusLib._TabM:AddNote(cfg)
-	self._o=self._o+1
-	local lib=self.Lib
-	local f=inst("Frame",self.Page,{
-		BackgroundColor3=Color3.fromRGB(16,24,50),
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,0),
-		AutomaticSize=Enum.AutomaticSize.Y,
-		LayoutOrder=cfg.Order or self._o,
+-- ════════════════════════════════════════
+--  TAB METHODS
+-- ════════════════════════════════════════
+UILib._TabMethods = {}
+
+-- AddSection
+function UILib._TabMethods:AddSection(config)
+	self._sectionOrder = self._sectionOrder + 1
+	local title = config.Title or "Section"
+	local order = config.Order or self._sectionOrder
+	local lib   = self.Library
+
+	local section = N("Frame", self.Page, {
+		BackgroundColor3 = D.BG3,
+		BorderSizePixel  = 0,
+		Size             = UDim2.new(1,0,0,0),
+		AutomaticSize    = Enum.AutomaticSize.Y,
+		LayoutOrder      = order,
 	})
-	corner(f,7)
-	stroke(f,T.Acc,1,0.55)
-	local lb=inst("Frame",f,{BackgroundColor3=T.AccLt,BorderSizePixel=0,Size=UDim2.new(0,2,1,0)})
+	corner(section, lib.IsMobile and 7 or 8)
+	stroke(section, D.BD, 1, 0.2)
+
+	-- ── Section header bar ────────────────────────────────────
+	local hdr = N("Frame", section, {
+		BackgroundColor3 = D.BG4,
+		BorderSizePixel  = 0,
+		Size = UDim2.new(1,0,0, lib.IsMobile and 22 or 24),
+	})
+	-- Accent stripe
+	local stripe = N("Frame", hdr, {
+		BackgroundColor3 = D.ACC,
+		BorderSizePixel  = 0,
+		Size = UDim2.new(0,2,1,0),
+	})
+	corner(stripe, 99)
+	N("TextLabel", hdr, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,10,0,0),
+		Size     = UDim2.new(1,-14,1,0),
+		Font     = D.FSB,
+		Text     = string.upper(title),
+		TextColor3 = D.T1,
+		TextSize   = lib.IsMobile and 8 or 9,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+
+	-- ── Content wrapper ───────────────────────────────────────
+	local wrap = N("Frame", section, {
+		BackgroundTransparency = 1,
+		BorderSizePixel        = 0,
+		Position = UDim2.new(0,0,0, lib.IsMobile and 22 or 24),
+		Size     = UDim2.new(1,0,0,0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+	})
+	padI(wrap,
+		lib.IsMobile and 7 or 8,
+		lib.IsMobile and 7 or 8,
+		lib.IsMobile and 5 or 6,
+		lib.IsMobile and 6 or 7)
+	vList(wrap, lib.IsMobile and 4 or 5)
+
+	local sec = { Frame=section, _wrap=wrap, Tab=self, Library=lib, _elementOrder=0 }
+	setmetatable(sec, {__index = UILib._SectionMethods})
+	return sec
+end
+
+-- AddNote (tab level)
+function UILib._TabMethods:AddNote(config)
+	self._sectionOrder = self._sectionOrder + 1
+	local text  = config.Text  or ""
+	local order = config.Order or self._sectionOrder
+	local lib   = self.Library
+
+	local f = N("Frame", self.Page, {
+		BackgroundColor3 = Color3.fromRGB(13,21,46),
+		BorderSizePixel  = 0,
+		Size             = UDim2.new(1,0,0,0),
+		AutomaticSize    = Enum.AutomaticSize.Y,
+		LayoutOrder      = order,
+	})
+	corner(f, 7)
+	stroke(f, D.ACC, 1, 0.5)
+	local lb = N("Frame",f,{BackgroundColor3=D.ACL,BorderSizePixel=0,Size=UDim2.new(0,2,1,0)})
 	corner(lb,99)
-	local lbl=inst("TextLabel",f,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,10,0,6),
-		Size=UDim2.new(1,-18,0,0),
-		AutomaticSize=Enum.AutomaticSize.Y,
-		Font=T.FR,
-		Text=cfg.Text or "",
-		TextColor3=T.AccLt,
-		TextSize=lib.FS.small+1,
-		TextWrapped=true,
-		TextXAlignment=Enum.TextXAlignment.Left,
+
+	local lbl = N("TextLabel", f, {
+		BackgroundTransparency = 1,
+		Position  = UDim2.new(0,10,0,6),
+		Size      = UDim2.new(1,-18,0,0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Font      = D.FN,
+		Text      = text,
+		TextColor3 = D.ACL,
+		TextSize   = lib.FontSmall + 1,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	inst("UIPadding",f,{PaddingBottom=UDim.new(0,6)})
+	N("UIPadding",f,{PaddingBottom=UDim.new(0,6)})
 	return lbl
 end
 
--- ═════════════════════════════════════
--- SECTION METHODS
--- ═════════════════════════════════════
-NexusLib._SecM = {}
+-- ════════════════════════════════════════
+--  SECTION METHODS
+-- ════════════════════════════════════════
+UILib._SectionMethods = {}
 
--- Toggle
-function NexusLib._SecM:AddToggle(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local val=cfg.Default or false
-	local cb=cfg.Callback or function()end
+local function W(s) return s._wrap end   -- helper: content parent
 
-	local row=inst("Frame",self.W,{
-		BackgroundTransparency=1,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,lib.EH),
-		LayoutOrder=cfg.Order or self._e,
+-- AddToggle
+function UILib._SectionMethods:AddToggle(config)
+	self._elementOrder = self._elementOrder + 1
+	local text     = config.Text     or "Toggle"
+	local default  = config.Default  or false
+	local callback = config.Callback or function()end
+	local order    = config.Order    or self._elementOrder
+	local lib      = self.Library
+	local h        = lib.ElementHeight
+
+	local row = N("Frame", W(self), {
+		BackgroundTransparency = 1,
+		BorderSizePixel        = 0,
+		Size        = UDim2.new(1,0,0,h),
+		LayoutOrder = order,
 	})
-	inst("TextLabel",row,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,0,0,0),
-		Size=UDim2.new(1,-52,1,0),
-		Font=T.FM,
-		Text=cfg.Text or "Toggle",
-		TextColor3=T.TX1,
-		TextSize=lib.FS.elem,
-		TextXAlignment=Enum.TextXAlignment.Left,
-		TextTruncate=Enum.TextTruncate.AtEnd,
+	N("TextLabel", row, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,0,0,0),
+		Size     = UDim2.new(1,-52,1,0),
+		Font     = D.FSB,
+		Text     = text,
+		TextColor3 = D.T1,
+		TextSize   = lib.FontElement,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate   = Enum.TextTruncate.AtEnd,
 	})
 
-	local tW=lib.Mobile and 34 or 38
-	local tH=lib.Mobile and 18 or 21
-	local kS=tH-5
+	local tW = lib.IsMobile and 34 or 38
+	local tH = lib.IsMobile and 18 or 21
+	local kS = tH - 5
 
-	local track=inst("Frame",row,{
-		BackgroundColor3=val and T.Acc or T.BG5,
-		BorderSizePixel=0,
-		Position=UDim2.new(1,-(tW+2),.5,-tH/2),
-		Size=UDim2.new(0,tW,0,tH),
+	local track = N("Frame", row, {
+		BackgroundColor3 = default and D.ACC or D.BG5,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(1,-(tW+2),.5,-tH/2),
+		Size     = UDim2.new(0,tW,0,tH),
 	})
-	corner(track,99)
-	stroke(track,T.Bdr,1,0)
+	corner(track, 99)
+	stroke(track, D.BD, 1, 0)
 
-	local knob=inst("Frame",track,{
-		BackgroundColor3=Color3.new(1,1,1),
-		BorderSizePixel=0,
-		Position=val and UDim2.new(1,-(kS+2),.5,-kS/2) or UDim2.new(0,2,.5,-kS/2),
-		Size=UDim2.new(0,kS,0,kS),
+	local knob = N("Frame", track, {
+		BackgroundColor3 = Color3.new(1,1,1),
+		BorderSizePixel  = 0,
+		Position = default and UDim2.new(1,-(kS+2),.5,-kS/2) or UDim2.new(0,2,.5,-kS/2),
+		Size     = UDim2.new(0,kS,0,kS),
 	})
-	corner(knob,99)
+	corner(knob, 99)
 
-	local active=val
+	local active = default
 	local function refresh()
-		tw(track,{BackgroundColor3=active and T.Acc or T.BG5},.2):Play()
-		tw(knob,{Position=active and UDim2.new(1,-(kS+2),.5,-kS/2) or UDim2.new(0,2,.5,-kS/2)},.2,Enum.EasingStyle.Back):Play()
+		T(track, {BackgroundColor3 = active and D.ACC or D.BG5}, .2):Play()
+		T(knob, {Position = active
+			and UDim2.new(1,-(kS+2),.5,-kS/2)
+			or  UDim2.new(0,2,.5,-kS/2)}, .2, Enum.EasingStyle.Back):Play()
 	end
 
-	local ca=inst("TextButton",row,{BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),Text=""})
-	ca.MouseButton1Click:Connect(function() active=not active; refresh(); cb(active) end)
+	local ca = N("TextButton", row, {BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),Text=""})
+	ca.MouseButton1Click:Connect(function() active=not active; refresh(); callback(active) end)
+	if active then refresh() end
 
 	return {
-		Frame=row,
-		SetValue=function(_,v) active=v; refresh() end,
-		GetValue=function() return active end,
+		Frame    = row,
+		SetValue = function(_, v) active=v; refresh() end,
+		GetValue = function() return active end,
 	}
 end
 
--- Button
-function NexusLib._SecM:AddButton(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local col=cfg.Color or T.Acc
-	local cb=cfg.Callback or function()end
+-- AddButton
+function UILib._SectionMethods:AddButton(config)
+	self._elementOrder = self._elementOrder + 1
+	local text     = config.Text     or "Button"
+	local color    = config.Color    or D.ACC
+	local callback = config.Callback or function()end
+	local order    = config.Order    or self._elementOrder
+	local lib      = self.Library
 
-	local btn=inst("TextButton",self.W,{
-		BackgroundColor3=col,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,lib.EH),
-		Font=T.FM,
-		Text=cfg.Text or "Button",
-		TextColor3=Color3.new(1,1,1),
-		TextSize=lib.FS.elem,
-		AutoButtonColor=false,
-		LayoutOrder=cfg.Order or self._e,
+	local btn = N("TextButton", W(self), {
+		BackgroundColor3 = color,
+		BorderSizePixel  = 0,
+		Size     = UDim2.new(1,0,0,lib.ElementHeight),
+		Font     = D.FSB,
+		Text     = text,
+		TextColor3 = Color3.new(1,1,1),
+		TextSize   = lib.FontElement,
+		AutoButtonColor = false,
+		LayoutOrder = order,
 	})
-	corner(btn,7)
-	inst("UIGradient",btn,{
-		Transparency=NumberSequence.new{
-			NumberSequenceKeypoint.new(0,0),
-			NumberSequenceKeypoint.new(1,.25),
+	corner(btn, 7)
+	N("UIGradient", btn, {
+		Transparency = NumberSequence.new{
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(1, .28),
 		},
-		Rotation=90,
+		Rotation = 90,
 	})
 
 	btn.MouseEnter:Connect(function()
-		tw(btn,{BackgroundColor3=col:lerp(Color3.new(1,1,1),.12)},.14):Play()
+		T(btn, {BackgroundColor3 = color:Lerp(Color3.new(1,1,1),.12)}, .13):Play()
 	end)
 	btn.MouseLeave:Connect(function()
-		tw(btn,{BackgroundColor3=col},.14):Play()
+		T(btn, {BackgroundColor3 = color}, .13):Play()
 	end)
 	btn.MouseButton1Down:Connect(function()
-		tw(btn,{Size=UDim2.new(0.98,0,0,lib.EH-2)},.07):Play()
+		T(btn, {Size=UDim2.new(0.98,0,0,lib.ElementHeight-2)}, .07):Play()
 	end)
 	btn.MouseButton1Up:Connect(function()
-		tw(btn,{Size=UDim2.new(1,0,0,lib.EH)},.14,Enum.EasingStyle.Back):Play()
-		cb(btn)
+		T(btn, {Size=UDim2.new(1,0,0,lib.ElementHeight)}, .13, Enum.EasingStyle.Back):Play()
+		callback(btn)
 	end)
 	return btn
 end
 
--- Label
-function NexusLib._SecM:AddLabel(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local h=cfg.Height or (lib.Mobile and 20 or 22)
+-- AddLabel
+function UILib._SectionMethods:AddLabel(config)
+	self._elementOrder = self._elementOrder + 1
+	local text  = config.Text  or ""
+	local order = config.Order or self._elementOrder
+	local lib   = self.Library
+	local h     = config.Height or (lib.IsMobile and 20 or 24)
 
-	local lbl=inst("TextLabel",self.W,{
-		BackgroundColor3=T.BG5,
-		BackgroundTransparency=0.4,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,h),
-		Font=T.FR,
-		Text=cfg.Text or "",
-		TextColor3=cfg.TextColor or T.TX2,
-		TextSize=cfg.TextSize or (lib.FS.small+1),
-		TextXAlignment=Enum.TextXAlignment.Left,
-		TextWrapped=true,
-		LayoutOrder=cfg.Order or self._e,
+	local lbl = N("TextLabel", W(self), {
+		BackgroundColor3     = D.BG5,
+		BackgroundTransparency = 0.38,
+		BorderSizePixel      = 0,
+		Size = UDim2.new(1,0,0,h),
+		Font = D.FN,
+		Text = text,
+		TextColor3 = config.TextColor or D.T2,
+		TextSize   = config.TextSize  or (lib.FontSmall+1),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped    = true,
+		LayoutOrder    = order,
 	})
-	corner(lbl,5)
-	inst("UIPadding",lbl,{PaddingLeft=UDim.new(0,8),PaddingRight=UDim.new(0,6)})
+	corner(lbl, 5)
+	padI(lbl, 8, 6)
 	return lbl
 end
 
--- Note (inside section)
-function NexusLib._SecM:AddNote(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local f=inst("Frame",self.W,{
-		BackgroundColor3=Color3.fromRGB(16,22,46),
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,0),
-		AutomaticSize=Enum.AutomaticSize.Y,
-		LayoutOrder=cfg.Order or self._e,
+-- AddNote (section level)
+function UILib._SectionMethods:AddNote(config)
+	self._elementOrder = self._elementOrder + 1
+	local text  = config.Text  or ""
+	local order = config.Order or self._elementOrder
+	local lib   = self.Library
+
+	local f = N("Frame", W(self), {
+		BackgroundColor3 = Color3.fromRGB(13,20,44),
+		BorderSizePixel  = 0,
+		Size             = UDim2.new(1,0,0,0),
+		AutomaticSize    = Enum.AutomaticSize.Y,
+		LayoutOrder      = order,
 	})
-	corner(f,5)
-	stroke(f,T.Acc,1,.6)
-	local bar=inst("Frame",f,{BackgroundColor3=T.AccLt,BorderSizePixel=0,Size=UDim2.new(0,2,1,0)})
-	corner(bar,99)
-	local lbl=inst("TextLabel",f,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,9,0,4),
-		Size=UDim2.new(1,-14,0,0),
-		AutomaticSize=Enum.AutomaticSize.Y,
-		Font=T.FR,
-		Text=cfg.Text or "",
-		TextColor3=T.AccLt,
-		TextSize=lib.FS.small,
-		TextWrapped=true,
-		TextXAlignment=Enum.TextXAlignment.Left,
+	corner(f, 5)
+	stroke(f, D.ACC, 1, 0.58)
+	local lb=N("Frame",f,{BackgroundColor3=D.ACL,BorderSizePixel=0,Size=UDim2.new(0,2,1,0)})
+	corner(lb,99)
+
+	local lbl = N("TextLabel", f, {
+		BackgroundTransparency = 1,
+		Position  = UDim2.new(0,9,0,4),
+		Size      = UDim2.new(1,-14,0,0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Font      = D.FN,
+		Text      = text,
+		TextColor3 = D.ACL,
+		TextSize   = lib.FontSmall,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	inst("UIPadding",f,{PaddingBottom=UDim.new(0,4)})
+	N("UIPadding",f,{PaddingBottom=UDim.new(0,4)})
 	return lbl
 end
 
--- Feature row
-function NexusLib._SecM:AddFeature(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local col=cfg.Color or T.Cyan
-	local h=lib.Mobile and 26 or 28
+-- AddFeature
+function UILib._SectionMethods:AddFeature(config)
+	self._elementOrder = self._elementOrder + 1
+	local icon  = config.Icon  or "◈"
+	local text  = config.Text  or "Feature"
+	local color = config.Color or D.CYN
+	local order = config.Order or self._elementOrder
+	local lib   = self.Library
+	local h     = lib.IsMobile and 26 or 30
 
-	local row=inst("Frame",self.W,{
-		BackgroundTransparency=1,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,h),
-		LayoutOrder=cfg.Order or self._e,
+	local row = N("Frame", W(self), {
+		BackgroundColor3     = D.BG4,
+		BackgroundTransparency = 0.35,
+		BorderSizePixel      = 0,
+		Size = UDim2.new(1,0,0,h),
+		LayoutOrder = order,
 	})
+	corner(row, 5)
+
+	-- colored left stripe
+	local stripe = N("Frame", row, {
+		BackgroundColor3 = color,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,0,.2,0),
+		Size     = UDim2.new(0,2,.6,0),
+	})
+	corner(stripe, 99)
+
 	-- dot
-	local d=inst("Frame",row,{
-		BackgroundColor3=col,
-		BorderSizePixel=0,
-		Position=UDim2.new(0,0,.5,-3),
-		Size=UDim2.new(0,6,0,6),
+	local d = N("Frame", row, {
+		BackgroundColor3 = color,
+		BorderSizePixel  = 0,
+		Position = UDim2.new(0,8,.5,-3),
+		Size     = UDim2.new(0,6,0,6),
 	})
-	corner(d,99)
+	corner(d, 99)
+
 	-- icon
-	inst("TextLabel",row,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,13,0,0),
-		Size=UDim2.new(0,18,1,0),
-		Font=T.FM,
-		Text=cfg.Icon or "◈",
-		TextColor3=col,
-		TextSize=lib.FS.elem,
+	N("TextLabel", row, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,18,0,0),
+		Size     = UDim2.new(0,18,1,0),
+		Font     = D.FSB,
+		Text     = icon,
+		TextColor3 = color,
+		TextSize   = lib.FontElement,
 	})
+
 	-- label
-	inst("TextLabel",row,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,32,0,0),
-		Size=UDim2.new(1,-32,1,0),
-		Font=T.FM,
-		Text=cfg.Text or "Feature",
-		TextColor3=T.TX1,
-		TextSize=lib.FS.elem,
-		TextXAlignment=Enum.TextXAlignment.Left,
-		TextTruncate=Enum.TextTruncate.AtEnd,
+	N("TextLabel", row, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,38,0,0),
+		Size     = UDim2.new(1,-42,1,0),
+		Font     = D.FSB,
+		Text     = text,
+		TextColor3 = D.T1,
+		TextSize   = lib.FontElement,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate   = Enum.TextTruncate.AtEnd,
 	})
 	return row
 end
 
--- ButtonGrid
-function NexusLib._SecM:AddButtonGrid(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local items=cfg.Items or {}
-	local cb=cfg.Callback or function()end
-	local sel=cfg.Default or (items[1] and items[1].name)
-	local bW=cfg.ButtonWidth or (lib.Mobile and 56 or 68)
-	local gh=lib.Mobile and 46 or 54
+-- AddButtonGrid
+function UILib._SectionMethods:AddButtonGrid(config)
+	self._elementOrder = self._elementOrder + 1
+	local items    = config.Items    or {}
+	local callback = config.Callback or function()end
+	local order    = config.Order    or self._elementOrder
+	local selected = config.Default  or (items[1] and items[1].name)
+	local lib      = self.Library
+	local btnW     = config.ButtonWidth or (lib.IsMobile and 56 or 68)
+	local gridH    = lib.IsMobile and 46 or 54
 
-	local sf=inst("ScrollingFrame",self.W,{
-		BackgroundTransparency=1,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,gh),
-		ScrollBarThickness=2,
-		ScrollBarImageColor3=T.BdrL,
-		AutomaticCanvasSize=Enum.AutomaticSize.X,
-		CanvasSize=UDim2.new(0,0,0,0),
-		LayoutOrder=cfg.Order or self._e,
+	local sf = N("ScrollingFrame", W(self), {
+		BackgroundTransparency = 1,
+		BorderSizePixel        = 0,
+		Size        = UDim2.new(1,0,0,gridH),
+		LayoutOrder = order,
+		ScrollBarThickness   = 2,
+		ScrollBarImageColor3 = D.BDL,
+		AutomaticCanvasSize  = Enum.AutomaticSize.X,
+		CanvasSize           = UDim2.new(0,0,0,0),
 	})
-	listLayout(sf,lib.Mobile and 4 or 5,Enum.FillDirection.Horizontal)
+	hList(sf, lib.IsMobile and 4 or 5)
 
-	local btns={}
-	for i,item in ipairs(items) do
-		local ac=(item.name==sel)
-		local ic=item.color or T.Acc
+	local buttons = {}
+	for i, item in ipairs(items) do
+		local ac  = (item.name == selected)
+		local ic  = item.color or D.ACC
 
-		local b=inst("TextButton",sf,{
-			BackgroundColor3=ac and ic or T.BG5,
-			BackgroundTransparency=ac and 0.18 or 0,
-			BorderSizePixel=0,
-			Size=UDim2.new(0,bW,0,gh-3),
-			Text="",AutoButtonColor=false,
-			LayoutOrder=i,
+		local b = N("TextButton", sf, {
+			BackgroundColor3     = ac and ic or D.BG5,
+			BackgroundTransparency = ac and 0.18 or 0,
+			BorderSizePixel      = 0,
+			Size = UDim2.new(0,btnW,0,gridH-3),
+			Text = "", AutoButtonColor=false,
+			LayoutOrder = i,
 		})
-		corner(b,7)
-		if ac then stroke(b,ic,1,0.45) end
+		corner(b, 7)
+		if ac then stroke(b, ic, 1, 0.44) end
 
-		inst("TextLabel",b,{
-			BackgroundTransparency=1,
-			Size=UDim2.new(1,0,0,gh*.52),
-			Text=item.icon or "□",
-			TextSize=lib.Mobile and 15 or 19,
-			Font=T.FH,
-			TextColor3=ac and ic or T.TX2,
+		N("TextLabel", b, {
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1,0,0,gridH*.52),
+			Text = item.icon or "□",
+			TextSize = lib.IsMobile and 15 or 19,
+			Font = D.FB,
+			TextColor3 = ac and ic or D.T2,
 		})
-		inst("TextLabel",b,{
-			BackgroundTransparency=1,
-			Position=UDim2.new(0,0,0,gh*.52),
-			Size=UDim2.new(1,0,0,gh*.4),
-			Text=item.label or item.name,
-			TextSize=lib.FS.small,
-			Font=T.FM,
-			TextColor3=ac and T.TX0 or T.TX2,
-			TextTruncate=Enum.TextTruncate.AtEnd,
+		N("TextLabel", b, {
+			BackgroundTransparency = 1,
+			Position = UDim2.new(0,0,0,gridH*.52),
+			Size     = UDim2.new(1,0,0,gridH*.4),
+			Text     = item.label or item.name,
+			TextSize = lib.FontSmall,
+			Font     = D.FSB,
+			TextColor3 = ac and D.T0 or D.T2,
+			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		btns[item.name]=b
+		buttons[item.name] = b
 
 		b.MouseButton1Click:Connect(function()
-			sel=item.name
-			for n2,b2 in pairs(btns) do
-				local it2; for _,x in ipairs(items) do if x.name==n2 then it2=x; break end end
-				local c2=it2 and (it2.color or T.Acc) or T.Acc
-				local a2=(n2==sel)
-				tw(b2,{BackgroundColor3=a2 and c2 or T.BG5,BackgroundTransparency=a2 and 0.18 or 0},.18):Play()
-				local ch=b2:GetChildren()
-				if ch[1] then tw(ch[1],{TextColor3=a2 and c2 or T.TX2},.18):Play() end
-				if ch[2] then tw(ch[2],{TextColor3=a2 and T.TX0 or T.TX2},.18):Play() end
+			selected = item.name
+			for bName, bBtn in pairs(buttons) do
+				local bItem
+				for _, it in ipairs(items) do if it.name==bName then bItem=it; break end end
+				local c2 = bItem and (bItem.color or D.ACC) or D.ACC
+				local a2 = (bName == selected)
+				T(bBtn,{BackgroundColor3=a2 and c2 or D.BG5, BackgroundTransparency=a2 and 0.18 or 0},.18):Play()
+				local ch = bBtn:GetChildren()
+				if ch[1] then T(ch[1],{TextColor3=a2 and c2 or D.T2},.18):Play() end
+				if ch[2] then T(ch[2],{TextColor3=a2 and D.T0 or D.T2},.18):Play() end
 			end
-			cb(item)
+			callback(item)
 		end)
 	end
-	return {Frame=sf,Buttons=btns,GetSelected=function()return sel end}
+
+	return {
+		Frame       = sf,
+		Buttons     = buttons,
+		GetSelected = function() return selected end,
+		SetSelected = function(_, name)
+			selected = name
+			for bName, bBtn in pairs(buttons) do
+				local bItem
+				for _, it in ipairs(items) do if it.name==bName then bItem=it; break end end
+				local c2 = bItem and (bItem.color or D.ACC) or D.ACC
+				local a2 = (bName == selected)
+				T(bBtn,{BackgroundColor3=a2 and c2 or D.BG5, BackgroundTransparency=a2 and 0.18 or 0},.18):Play()
+				local ch = bBtn:GetChildren()
+				if ch[1] then T(ch[1],{TextColor3=a2 and c2 or D.T2},.18):Play() end
+				if ch[2] then T(ch[2],{TextColor3=a2 and D.T0 or D.T2},.18):Play() end
+			end
+		end,
+	}
 end
 
--- TextBox
-function NexusLib._SecM:AddTextBox(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local h=lib.Mobile and 30 or 34
+-- AddTextBox
+function UILib._SectionMethods:AddTextBox(config)
+	self._elementOrder = self._elementOrder + 1
+	local placeholder = config.Placeholder or "Type here..."
+	local default     = config.Default     or ""
+	local callback    = config.Callback    or function()end
+	local order       = config.Order       or self._elementOrder
+	local lib         = self.Library
+	local h           = lib.IsMobile and 30 or 34
 
-	local wrap=inst("Frame",self.W,{
-		BackgroundColor3=T.BG5,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,h),
-		LayoutOrder=cfg.Order or self._e,
+	local frame = N("Frame", W(self), {
+		BackgroundColor3 = D.BG5,
+		BorderSizePixel  = 0,
+		Size     = UDim2.new(1,0,0,h),
+		LayoutOrder = order,
 	})
-	corner(wrap,6)
-	local s=inst("UIStroke",wrap,{Color=T.Bdr,Thickness=1})
+	corner(frame, 6)
+	local s = N("UIStroke", frame, {Color=D.BD, Thickness=1})
 
-	local tb=inst("TextBox",wrap,{
-		BackgroundTransparency=1,
-		Position=UDim2.new(0,8,0,0),
-		Size=UDim2.new(1,-16,1,0),
-		Font=T.FR,
-		PlaceholderText=cfg.Placeholder or "Type here...",
-		PlaceholderColor3=T.TXD,
-		Text=cfg.Default or "",
-		TextColor3=T.TX0,
-		TextSize=lib.FS.elem,
-		TextXAlignment=Enum.TextXAlignment.Left,
-		ClearTextOnFocus=false,
+	local tb = N("TextBox", frame, {
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0,8,0,0),
+		Size     = UDim2.new(1,-16,1,0),
+		Font     = D.FN,
+		PlaceholderText   = placeholder,
+		PlaceholderColor3 = D.T3,
+		Text      = default,
+		TextColor3 = D.T0,
+		TextSize   = lib.FontElement,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ClearTextOnFocus = false,
 	})
-	tb.Focused:Connect(function() tw(s,{Color=T.Acc},.18):Play() end)
-	tb.FocusLost:Connect(function()
-		tw(s,{Color=T.Bdr},.18):Play()
-		if cfg.Callback then cfg.Callback(tb.Text) end
-	end)
+
+	tb.Focused:Connect(function()   T(s, {Color=D.ACC}, .18):Play() end)
+	tb.FocusLost:Connect(function() T(s, {Color=D.BD},  .18):Play(); callback(tb.Text) end)
 	return tb
 end
 
--- QuantitySelector
-function NexusLib._SecM:AddQuantitySelector(cfg)
-	self._e=self._e+1
-	local lib=self.Lib
-	local amounts=cfg.Amounts or {1,5,10,50,100}
-	local def=cfg.Default or amounts[3] or 10
-	local cb=cfg.Callback or function()end
-	local bW=lib.Mobile and 46 or 56
-	local bH=lib.Mobile and 25 or 29
+-- AddQuantitySelector
+function UILib._SectionMethods:AddQuantitySelector(config)
+	self._elementOrder = self._elementOrder + 1
+	local amounts  = config.Amounts  or {1,5,10,50,100}
+	local default  = config.Default  or amounts[3] or 10
+	local callback = config.Callback or function()end
+	local order    = config.Order    or self._elementOrder
+	local lib      = self.Library
+	local btnW     = lib.IsMobile and 46 or 56
+	local btnH     = lib.IsMobile and 25 or 29
 
-	local sf=inst("ScrollingFrame",self.W,{
-		BackgroundTransparency=1,
-		BorderSizePixel=0,
-		Size=UDim2.new(1,0,0,bH+3),
-		ScrollBarThickness=2,
-		AutomaticCanvasSize=Enum.AutomaticSize.X,
-		CanvasSize=UDim2.new(0,0,0,0),
-		LayoutOrder=cfg.Order or self._e,
+	local sf = N("ScrollingFrame", W(self), {
+		BackgroundTransparency = 1,
+		BorderSizePixel        = 0,
+		Size = UDim2.new(1,0,0,btnH+3),
+		LayoutOrder = order,
+		ScrollBarThickness  = 2,
+		AutomaticCanvasSize = Enum.AutomaticSize.X,
+		CanvasSize          = UDim2.new(0,0,0,0),
 	})
-	listLayout(sf,lib.Mobile and 3 or 4,Enum.FillDirection.Horizontal)
+	hList(sf, lib.IsMobile and 3 or 4)
 
-	local sel=def
-	local btns={}
-	for _,amt in ipairs(amounts) do
-		local ac=(amt==def)
-		local b=inst("TextButton",sf,{
-			BackgroundColor3=ac and T.Green or T.BG5,
-			BackgroundTransparency=ac and 0.15 or 0,
-			BorderSizePixel=0,
-			Size=UDim2.new(0,bW,0,bH),
-			Font=T.FM,
-			Text="×"..amt,
-			TextColor3=ac and T.TX0 or T.TX2,
-			TextSize=lib.FS.elem,
-			AutoButtonColor=false,
+	local selected = default
+	local buttons  = {}
+
+	for _, amt in ipairs(amounts) do
+		local ac = (amt == default)
+		local b  = N("TextButton", sf, {
+			BackgroundColor3     = ac and D.GRN or D.BG5,
+			BackgroundTransparency = ac and 0.15 or 0,
+			BorderSizePixel      = 0,
+			Size    = UDim2.new(0,btnW,0,btnH),
+			Font    = D.FSB,
+			Text    = "x" .. amt,
+			TextColor3 = ac and D.T0 or D.T2,
+			TextSize   = lib.FontElement,
+			AutoButtonColor = false,
 		})
-		corner(b,6)
-		btns[amt]=b
+		corner(b, 6)
+		buttons[amt] = b
+
 		b.MouseButton1Click:Connect(function()
-			sel=amt
-			for a2,b2 in pairs(btns) do
-				local a=(a2==sel)
-				tw(b2,{
-					BackgroundColor3=a and T.Green or T.BG5,
-					BackgroundTransparency=a and 0.15 or 0,
-					TextColor3=a and T.TX0 or T.TX2,
+			selected = amt
+			for a2, b2 in pairs(buttons) do
+				local a = (a2 == selected)
+				T(b2,{
+					BackgroundColor3     = a and D.GRN or D.BG5,
+					BackgroundTransparency = a and 0.15 or 0,
+					TextColor3           = a and D.T0  or D.T2,
 				},.18):Play()
 			end
-			cb(amt)
+			callback(amt)
 		end)
 	end
-	return {Frame=sf,GetValue=function()return sel end}
+
+	return {
+		Frame    = sf,
+		GetValue = function() return selected end,
+	}
 end
 
-return NexusLib
+return UILib
