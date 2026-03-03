@@ -1,6 +1,6 @@
 -- UILibrary.lua
--- Modern Sleek UI (No Shadow) + Anti-AFK Always On + Resizable Window
--- Tabs horizontal di atas, ukuran ~500x475
+-- Modern Sleek UI + Anti-AFK Always On + Resizable Window
+-- Tabs di atas (horizontal), ukuran mirip Rayfield (~500x475)
 
 local UILib = {}
 UILib.__index = UILib
@@ -21,6 +21,9 @@ local function getScreenSize()
 	return Vector2.new(1920, 1080)
 end
 
+--=============================================
+-- MAIN CONSTRUCTOR
+--=============================================
 function UILib.new(config)
 	local self = setmetatable({}, UILib)
 
@@ -61,6 +64,20 @@ function UILib.new(config)
 	self.ScreenGui.ResetOnSpawn = false
 	self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+	-- Shadow
+	self.Shadow = Instance.new("ImageLabel", self.ScreenGui)
+	self.Shadow.Name = "Shadow"
+	self.Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.Shadow.BackgroundTransparency = 1
+	self.Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	self.Shadow.Size = self.Size + UDim2.new(0, 46, 0, 46)
+	self.Shadow.Image = "rbxassetid://5554236805"
+	self.Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+	self.Shadow.ImageTransparency = 0.45
+	self.Shadow.ScaleType = Enum.ScaleType.Slice
+	self.Shadow.SliceCenter = Rect.new(23, 23, 277, 277)
+	self.Shadow.ZIndex = 0
+
 	-- Main
 	self.Main = Instance.new("Frame", self.ScreenGui)
 	self.Main.Name = "Main"
@@ -81,6 +98,7 @@ function UILib.new(config)
 	self:_createTitleBar()
 	self:_createTabBar()
 
+	-- Content
 	self.ContentArea = Instance.new("Frame", self.Main)
 	self.ContentArea.Name = "Content"
 	self.ContentArea.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -96,10 +114,12 @@ function UILib.new(config)
 
 	-- Open anim
 	self.Main.Size = UDim2.new(0, self.Size.X.Offset, 0, 0)
-	self.Main.BackgroundTransparency = 1
+	self.Shadow.ImageTransparency = 1
 	TweenService:Create(self.Main, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Size = self.Size,
-		BackgroundTransparency = 0
+		Size = self.Size
+	}):Play()
+	TweenService:Create(self.Shadow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+		ImageTransparency = 0.45
 	}):Play()
 
 	self:_startUpdateLoop()
@@ -118,6 +138,7 @@ function UILib:_createTitleBar()
 	self.TitleBar.Size = UDim2.new(1, 0, 0, self.TitleBarHeight)
 	self.TitleBar.ZIndex = 5
 
+	-- Corner repair (kotak di bawah topbar supaya corner radius ga bocor)
 	local cornerRepair = Instance.new("Frame", self.TitleBar)
 	cornerRepair.Name = "CornerRepair"
 	cornerRepair.BackgroundColor3 = Color3.fromRGB(34, 34, 34)
@@ -126,6 +147,7 @@ function UILib:_createTitleBar()
 	cornerRepair.Size = UDim2.new(1, 0, 0, 10)
 	cornerRepair.ZIndex = 5
 
+	-- Divider
 	local divider = Instance.new("Frame", self.TitleBar)
 	divider.Name = "Divider"
 	divider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
@@ -134,6 +156,7 @@ function UILib:_createTitleBar()
 	divider.Size = UDim2.new(1, 0, 0, 1)
 	divider.ZIndex = 6
 
+	-- Title
 	local titleLabel = Instance.new("TextLabel", self.TitleBar)
 	titleLabel.Name = "Title"
 	titleLabel.BackgroundTransparency = 1
@@ -147,10 +170,11 @@ function UILib:_createTitleBar()
 	titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	titleLabel.ZIndex = 6
 
+	-- Buttons (right side)
 	local btnSize = 20
 	local btnPad = 12
 
-	-- Hide (X)
+	-- Hide button (X)
 	local hideBtn = Instance.new("ImageButton", self.TitleBar)
 	hideBtn.Name = "Hide"
 	hideBtn.BackgroundTransparency = 1
@@ -173,7 +197,7 @@ function UILib:_createTitleBar()
 		self.ScreenGui.Enabled = false
 	end)
 
-	-- Minimize
+	-- Minimize button
 	local minBtn = Instance.new("ImageButton", self.TitleBar)
 	minBtn.Name = "Minimize"
 	minBtn.BackgroundTransparency = 1
@@ -199,11 +223,18 @@ function UILib:_createTitleBar()
 			TweenService:Create(self.Main, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 				Size = UDim2.new(0, self.Size.X.Offset, 0, self.TitleBarHeight)
 			}):Play()
+			TweenService:Create(self.Shadow, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
+				Size = UDim2.new(0, self.Size.X.Offset + 46, 0, self.TitleBarHeight + 46)
+			}):Play()
 			if self.ResizeHandle then self.ResizeHandle.Visible = false end
+			-- Ganti icon ke expand
 			minBtn.ImageRectOffset = Vector2.new(764, 124)
 		else
 			TweenService:Create(self.Main, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 				Size = self.Size
+			}):Play()
+			TweenService:Create(self.Shadow, TweenInfo.new(0.5, Enum.EasingStyle.Quint), {
+				Size = self.Size + UDim2.new(0, 46, 0, 46)
 			}):Play()
 			if self.ResizeHandle then self.ResizeHandle.Visible = true end
 			minBtn.ImageRectOffset = Vector2.new(764, 244)
@@ -212,7 +243,7 @@ function UILib:_createTitleBar()
 end
 
 --=============================================
--- TAB BAR (horizontal)
+-- TAB BAR (horizontal, di atas content)
 --=============================================
 function UILib:_createTabBar()
 	self.TabBar = Instance.new("ScrollingFrame", self.Main)
@@ -238,6 +269,7 @@ function UILib:_createTabBar()
 	tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	tabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
+	-- Bottom divider
 	local tabDivider = Instance.new("Frame", self.Main)
 	tabDivider.Name = "TabDivider"
 	tabDivider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
@@ -287,6 +319,7 @@ function UILib:_setupDrag()
 			TweenService:Create(self.Main, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 				Position = newPos
 			}):Play()
+			self.Shadow.Position = newPos
 		end
 	end)
 end
@@ -309,6 +342,7 @@ function UILib:_setupResize()
 	handle.Size = UDim2.new(0, handleSize, 0, handleSize)
 	handle.ZIndex = 10
 
+	-- Grip dots
 	local gripDots = {}
 	for row = 0, 2 do
 		for col = 0, 2 - row do
@@ -390,6 +424,8 @@ function UILib:_setupResize()
 			self.Main.Size = newSize
 			self.Main.Position = newPos
 			self.Size = newSize
+			self.Shadow.Size = newSize + UDim2.new(0, 46, 0, 46)
+			self.Shadow.Position = newPos
 		end
 	end)
 
@@ -457,12 +493,15 @@ function UILib:_startAntiAFK()
 end
 
 function UILib:_createAntiAfkIndicator()
+	-- Small pill next to title
 	local indicator = Instance.new("Frame", self.TitleBar)
 	indicator.Name = "AntiAfk"
 	indicator.BackgroundColor3 = Color3.fromRGB(0, 146, 214)
 	indicator.BackgroundTransparency = 0.85
 	indicator.BorderSizePixel = 0
 	indicator.ZIndex = 7
+
+	-- Position it after title but before buttons
 	indicator.AnchorPoint = Vector2.new(0, 0.5)
 	indicator.Position = UDim2.new(0, self.IsMobile and 130 or 180, 0.5, 0)
 	indicator.Size = UDim2.new(0, 46, 0, 18)
@@ -502,9 +541,10 @@ function UILib:_createAntiAfkIndicator()
 end
 
 --=============================================
--- STATUS
+-- STATUS AREA
 --=============================================
 function UILib:_createStatusArea()
+	-- Kecil di title bar
 	local statusFrame = Instance.new("Frame", self.TitleBar)
 	statusFrame.Name = "Status"
 	statusFrame.BackgroundTransparency = 1
@@ -535,7 +575,7 @@ function UILib:SetStatus(line, text, color)
 end
 
 --=============================================
--- NOTIFY
+-- NOTIFY BAR
 --=============================================
 function UILib:_createNotifyBar()
 	self.NotifyBar = Instance.new("TextLabel", self.Main)
@@ -574,7 +614,7 @@ function UILib:Notify(msg, color)
 end
 
 --=============================================
--- ADD TAB
+-- ADD TAB (horizontal tab buttons)
 --=============================================
 function UILib:AddTab(config)
 	local tabName = config.Name or "Tab"
@@ -583,6 +623,7 @@ function UILib:AddTab(config)
 	self._tabIndex = self._tabIndex + 1
 	local index = self._tabIndex
 
+	-- Tab button (pill style)
 	local btn = Instance.new("TextButton", self.TabBar)
 	btn.Name = "Tab_" .. tabName
 	btn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
@@ -600,11 +641,18 @@ function UILib:AddTab(config)
 	local btnStroke = Instance.new("UIStroke", btn)
 	btnStroke.Color = Color3.fromRGB(85, 85, 85)
 	btnStroke.Thickness = 1
+	btnStroke.Transparency = 0
 
-	Instance.new("UIPadding", btn).PaddingLeft = UDim.new(0, 12)
-	Instance.new("UIPadding", btn).PaddingRight = UDim.new(0, 12)
+	local btnPad = Instance.new("UIPadding", btn)
+	btnPad.PaddingLeft = UDim.new(0, 12)
+	btnPad.PaddingRight = UDim.new(0, 12)
 
-	local titleText = (tabIcon ~= "" and (tabIcon .. "  " .. tabName)) or tabName
+	local titleText = tabIcon
+	if tabIcon ~= "" then
+		titleText = tabIcon .. "  " .. tabName
+	else
+		titleText = tabName
+	end
 
 	local btnLabel = Instance.new("TextLabel", btn)
 	btnLabel.Name = "Title"
@@ -618,6 +666,20 @@ function UILib:AddTab(config)
 	btnLabel.TextTransparency = 0.2
 	btnLabel.ZIndex = 7
 
+	-- Shadow behind selected tab
+	local btnShadow = Instance.new("ImageLabel", btn)
+	btnShadow.Name = "Shadow"
+	btnShadow.BackgroundTransparency = 1
+	btnShadow.Image = "rbxassetid://5554236805"
+	btnShadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+	btnShadow.ImageTransparency = 0.7
+	btnShadow.ScaleType = Enum.ScaleType.Slice
+	btnShadow.SliceCenter = Rect.new(23, 23, 277, 277)
+	btnShadow.Size = UDim2.new(1, 12, 1, 12)
+	btnShadow.Position = UDim2.new(0, -6, 0, -6)
+	btnShadow.ZIndex = 5
+
+	-- Content page
 	local page = Instance.new("ScrollingFrame", self.ContentArea)
 	page.Name = "Page_" .. tabName
 	page.BackgroundTransparency = 1
@@ -639,6 +701,7 @@ function UILib:AddTab(config)
 	self.TabButtons[tabName] = btn
 	self.TabPages[tabName] = page
 
+	-- Hover
 	btn.MouseEnter:Connect(function()
 		if self.ActiveTab ~= tabName then
 			TweenService:Create(btn, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
@@ -683,6 +746,7 @@ function UILib:SwitchTab(name)
 
 	for tabName, btn in pairs(self.TabButtons) do
 		local lbl = btn:FindFirstChild("Title")
+		local shadow = btn:FindFirstChild("Shadow")
 		local stroke = btn:FindFirstChildOfClass("UIStroke")
 
 		if tabName == name then
@@ -699,6 +763,9 @@ function UILib:SwitchTab(name)
 			if stroke then
 				TweenService:Create(stroke, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
 			end
+			if shadow then
+				TweenService:Create(shadow, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {ImageTransparency = 0.9}):Play()
+			end
 		else
 			TweenService:Create(btn, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
 				BackgroundColor3 = Color3.fromRGB(80, 80, 80),
@@ -713,6 +780,9 @@ function UILib:SwitchTab(name)
 			if stroke then
 				TweenService:Create(stroke, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
 			end
+			if shadow then
+				TweenService:Create(shadow, TweenInfo.new(0.3, Enum.EasingStyle.Quint), {ImageTransparency = 0.7}):Play()
+			end
 		end
 	end
 
@@ -722,7 +792,7 @@ function UILib:SwitchTab(name)
 end
 
 --=============================================
--- UPDATE
+-- UPDATE LOOP
 --=============================================
 function UILib:OnUpdate(callback)
 	table.insert(self.UpdateCallbacks, callback)
@@ -812,6 +882,7 @@ function UILib._TabMethods:AddSection(config)
 	local order = config.Order or self._sectionOrder
 	local lib = self.Library
 
+	-- Section spacing (like Rayfield)
 	if self._sectionOrder > 1 then
 		local spacing = Instance.new("Frame", self.Page)
 		spacing.Name = "SectionSpacing"
@@ -820,6 +891,7 @@ function UILib._TabMethods:AddSection(config)
 		spacing.LayoutOrder = order * 100 - 1
 	end
 
+	-- Section title
 	local sectionTitle = Instance.new("Frame", self.Page)
 	sectionTitle.Name = "SectionTitle"
 	sectionTitle.BackgroundTransparency = 1
@@ -837,7 +909,7 @@ function UILib._TabMethods:AddSection(config)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	local sec = {
-		Frame = self.Page,
+		Frame = self.Page, -- elements go directly into page
 		Tab = self,
 		Library = lib,
 		_elementOrder = order * 100,
@@ -851,6 +923,7 @@ function UILib._TabMethods:AddNote(config)
 	self._sectionOrder = self._sectionOrder + 1
 	local text = config.Text or ""
 	local order = config.Order or (self._sectionOrder * 100)
+	local lib = self.Library
 
 	local para = Instance.new("Frame", self.Page)
 	para.Name = "Note"
@@ -919,6 +992,7 @@ function UILib._SectionMethods:AddToggle(config)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 
+	-- Switch container
 	local switchBG = Instance.new("Frame", frame)
 	switchBG.Name = "Switch"
 	switchBG.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -947,29 +1021,42 @@ function UILib._SectionMethods:AddToggle(config)
 	local active = default
 
 	local function updateVisual(animate)
-		local t = animate and TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) or TweenInfo.new(0)
+		local tweenInfo = animate and TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out) or TweenInfo.new(0)
 		if active then
-			TweenService:Create(indicator, t, {
+			TweenService:Create(indicator, tweenInfo, {
 				Position = UDim2.new(1, -19, 0.5, 0),
 				BackgroundColor3 = Color3.fromRGB(0, 146, 214)
 			}):Play()
-			TweenService:Create(indStroke, t, {Color = Color3.fromRGB(0, 170, 255)}):Play()
-			TweenService:Create(switchStroke, t, {Color = Color3.fromRGB(100, 100, 100)}):Play()
+			TweenService:Create(indStroke, tweenInfo, {
+				Color = Color3.fromRGB(0, 170, 255)
+			}):Play()
+			TweenService:Create(switchStroke, tweenInfo, {
+				Color = Color3.fromRGB(100, 100, 100)
+			}):Play()
 		else
-			TweenService:Create(indicator, t, {
+			TweenService:Create(indicator, tweenInfo, {
 				Position = UDim2.new(0, 2, 0.5, 0),
 				BackgroundColor3 = Color3.fromRGB(100, 100, 100)
 			}):Play()
-			TweenService:Create(indStroke, t, {Color = Color3.fromRGB(125, 125, 125)}):Play()
-			TweenService:Create(switchStroke, t, {Color = Color3.fromRGB(65, 65, 65)}):Play()
+			TweenService:Create(indStroke, tweenInfo, {
+				Color = Color3.fromRGB(125, 125, 125)
+			}):Play()
+			TweenService:Create(switchStroke, tweenInfo, {
+				Color = Color3.fromRGB(65, 65, 65)
+			}):Play()
 		end
 	end
 
+	-- Hover
 	frame.MouseEnter:Connect(function()
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		}):Play()
 	end)
 	frame.MouseLeave:Connect(function()
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+		}):Play()
 	end)
 
 	local clickBtn = Instance.new("TextButton", frame)
@@ -982,9 +1069,14 @@ function UILib._SectionMethods:AddToggle(config)
 	clickBtn.MouseButton1Click:Connect(function()
 		active = not active
 		updateVisual(true)
-		TweenService:Create(indicator, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, 12, 0, 12)}):Play()
+		-- Animate size bounce like Rayfield
+		TweenService:Create(indicator, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, 12, 0, 12)
+		}):Play()
 		task.wait(0.05)
-		TweenService:Create(indicator, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(0, 17, 0, 17)}):Play()
+		TweenService:Create(indicator, TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+			Size = UDim2.new(0, 17, 0, 17)
+		}):Play()
 		callback(active)
 	end)
 
@@ -1000,6 +1092,7 @@ end
 function UILib._SectionMethods:AddButton(config)
 	self._elementOrder = self._elementOrder + 1
 	local text = config.Text or "Button"
+	local color = config.Color
 	local callback = config.Callback or function() end
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
@@ -1028,6 +1121,7 @@ function UILib._SectionMethods:AddButton(config)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 
+	-- Arrow indicator
 	local arrow = Instance.new("TextLabel", frame)
 	arrow.Name = "ElementIndicator"
 	arrow.BackgroundTransparency = 1
@@ -1047,22 +1141,32 @@ function UILib._SectionMethods:AddButton(config)
 	btn.ZIndex = 2
 
 	btn.MouseButton1Click:Connect(function()
-		local s, r = pcall(callback, frame)
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
-		TweenService:Create(arrow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
-		TweenService:Create(elStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
-		task.wait(0.2)
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
-		TweenService:Create(arrow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
-		TweenService:Create(elStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
+		local Success, Response = pcall(callback, frame)
+		if Success then
+			TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+				BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+			}):Play()
+			TweenService:Create(arrow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 1}):Play()
+			TweenService:Create(elStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 1}):Play()
+			task.wait(0.2)
+			TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+				BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+			}):Play()
+			TweenService:Create(arrow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
+			TweenService:Create(elStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {Transparency = 0}):Play()
+		end
 	end)
 
 	frame.MouseEnter:Connect(function()
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		}):Play()
 		TweenService:Create(arrow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.7}):Play()
 	end)
 	frame.MouseLeave:Connect(function()
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+		}):Play()
 		TweenService:Create(arrow, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {TextTransparency = 0.9}):Play()
 	end)
 
@@ -1084,9 +1188,9 @@ function UILib._SectionMethods:AddLabel(config)
 	label.LayoutOrder = order
 	Instance.new("UICorner", label).CornerRadius = UDim.new(0, 8)
 
-	local lStroke = Instance.new("UIStroke", label)
-	lStroke.Color = Color3.fromRGB(40, 40, 40)
-	lStroke.Thickness = 1
+	local labelStroke = Instance.new("UIStroke", label)
+	labelStroke.Color = Color3.fromRGB(40, 40, 40)
+	labelStroke.Thickness = 1
 
 	local titleLabel = Instance.new("TextLabel", label)
 	titleLabel.Name = "Title"
@@ -1107,6 +1211,7 @@ function UILib._SectionMethods:AddNote(config)
 	self._elementOrder = self._elementOrder + 1
 	local text = config.Text or ""
 	local order = config.Order or self._elementOrder
+	local lib = self.Library
 
 	local noteFrame = Instance.new("Frame", self.Frame)
 	noteFrame.Name = "Note"
@@ -1144,12 +1249,13 @@ function UILib._SectionMethods:AddFeature(config)
 	local color = config.Color or Color3.fromRGB(0, 146, 214)
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
+	local h = 32
 
 	local frame = Instance.new("Frame", self.Frame)
 	frame.Name = text
 	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 	frame.BorderSizePixel = 0
-	frame.Size = UDim2.new(1, 0, 0, 32)
+	frame.Size = UDim2.new(1, 0, 0, h)
 	frame.LayoutOrder = order
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
@@ -1157,6 +1263,7 @@ function UILib._SectionMethods:AddFeature(config)
 	elStroke.Color = Color3.fromRGB(50, 50, 50)
 	elStroke.Thickness = 1
 
+	-- Color indicator line
 	local indicator = Instance.new("Frame", frame)
 	indicator.BackgroundColor3 = color
 	indicator.BorderSizePixel = 0
@@ -1209,8 +1316,7 @@ function UILib._SectionMethods:AddButtonGrid(config)
 
 	for i, item in ipairs(items) do
 		local btn = Instance.new("TextButton", gridFrame)
-		local isSel = (item.name == selected)
-		btn.BackgroundColor3 = isSel and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
+		btn.BackgroundColor3 = (item.name == selected) and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
 		btn.BorderSizePixel = 0
 		btn.Size = UDim2.new(0, btnW, 0, gridH - 4)
 		btn.Text = ""
@@ -1221,7 +1327,7 @@ function UILib._SectionMethods:AddButtonGrid(config)
 		local bStroke = Instance.new("UIStroke", btn)
 		bStroke.Color = Color3.fromRGB(85, 85, 85)
 		bStroke.Thickness = 1
-		bStroke.Transparency = isSel and 1 or 0
+		bStroke.Transparency = (item.name == selected) and 1 or 0
 
 		local iconLabel = Instance.new("TextLabel", btn)
 		iconLabel.BackgroundTransparency = 1
@@ -1231,12 +1337,11 @@ function UILib._SectionMethods:AddButtonGrid(config)
 		iconLabel.Font = Enum.Font.GothamBold
 
 		local nameLabel = Instance.new("TextLabel", btn)
-		nameLabel.Name = "NameLabel"
 		nameLabel.BackgroundTransparency = 1
 		nameLabel.Position = UDim2.new(0, 0, 0, 24)
 		nameLabel.Size = UDim2.new(1, 0, 0, 16)
 		nameLabel.Text = item.label or item.name
-		nameLabel.TextColor3 = isSel and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
+		nameLabel.TextColor3 = (item.name == selected) and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
 		nameLabel.TextSize = 8
 		nameLabel.Font = Enum.Font.GothamSemibold
 		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1246,19 +1351,27 @@ function UILib._SectionMethods:AddButtonGrid(config)
 		btn.MouseButton1Click:Connect(function()
 			selected = item.name
 			for bName, bBtn in pairs(buttons) do
-				local s = (bName == selected)
-				TweenService:Create(bBtn, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
-					BackgroundColor3 = s and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
-				}):Play()
-				local nl = bBtn:FindFirstChild("NameLabel")
-				if nl then
-					TweenService:Create(nl, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
-						TextColor3 = s and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
-					}):Play()
+				local bItem
+				for _, it in ipairs(items) do if it.name == bName then bItem = it; break end end
+				local isSelected = (bName == selected)
+				local bNameLabel = bBtn:FindFirstChildOfClass("TextLabel")
+				-- find name label (second one)
+				local children = bBtn:GetChildren()
+				for _, c in ipairs(children) do
+					if c:IsA("TextLabel") and c.Position.Y.Offset == 24 then
+						TweenService:Create(c, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+							TextColor3 = isSelected and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
+						}):Play()
+					end
 				end
-				local st = bBtn:FindFirstChildOfClass("UIStroke")
-				if st then
-					TweenService:Create(st, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {Transparency = s and 1 or 0}):Play()
+				TweenService:Create(bBtn, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+					BackgroundColor3 = isSelected and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
+				}):Play()
+				local bStroke2 = bBtn:FindFirstChildOfClass("UIStroke")
+				if bStroke2 then
+					TweenService:Create(bStroke2, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+						Transparency = isSelected and 1 or 0
+					}):Play()
 				end
 			end
 			callback(item)
@@ -1272,9 +1385,9 @@ function UILib._SectionMethods:AddButtonGrid(config)
 		SetSelected = function(_, name)
 			selected = name
 			for bName, bBtn in pairs(buttons) do
-				local s = (bName == selected)
+				local isSelected = (bName == selected)
 				TweenService:Create(bBtn, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
-					BackgroundColor3 = s and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
+					BackgroundColor3 = isSelected and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
 				}):Play()
 			end
 		end
@@ -1288,12 +1401,13 @@ function UILib._SectionMethods:AddTextBox(config)
 	local callback = config.Callback or function() end
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
+	local h = 36
 
 	local frame = Instance.new("Frame", self.Frame)
 	frame.Name = "Input"
 	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 	frame.BorderSizePixel = 0
-	frame.Size = UDim2.new(1, 0, 0, 36)
+	frame.Size = UDim2.new(1, 0, 0, h)
 	frame.LayoutOrder = order
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
 
@@ -1301,6 +1415,7 @@ function UILib._SectionMethods:AddTextBox(config)
 	elStroke.Color = Color3.fromRGB(50, 50, 50)
 	elStroke.Thickness = 1
 
+	-- Input frame (inner box, right side)
 	local inputFrame = Instance.new("Frame", frame)
 	inputFrame.Name = "InputFrame"
 	inputFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
@@ -1327,13 +1442,19 @@ function UILib._SectionMethods:AddTextBox(config)
 	textbox.TextSize = 12
 	textbox.TextXAlignment = Enum.TextXAlignment.Left
 
+	-- Hover
 	frame.MouseEnter:Connect(function()
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(40, 40, 40)}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+		}):Play()
 	end)
 	frame.MouseLeave:Connect(function()
-		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {BackgroundColor3 = Color3.fromRGB(35, 35, 35)}):Play()
+		TweenService:Create(frame, TweenInfo.new(0.6, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+		}):Play()
 	end)
 
+	-- Auto-resize input frame
 	textbox:GetPropertyChangedSignal("Text"):Connect(function()
 		TweenService:Create(inputFrame, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 			Size = UDim2.new(0, math.clamp(textbox.TextBounds.X + 24, 80, 200), 0, 26)
@@ -1353,6 +1474,7 @@ function UILib._SectionMethods:AddQuantitySelector(config)
 	local default = config.Default or amounts[3] or 10
 	local callback = config.Callback or function() end
 	local order = config.Order or self._elementOrder
+	local lib = self.Library
 	local btnW = 56
 	local btnH = 30
 
@@ -1374,14 +1496,14 @@ function UILib._SectionMethods:AddQuantitySelector(config)
 	local buttons = {}
 
 	for _, amt in ipairs(amounts) do
-		local isSel = (amt == default)
 		local btn = Instance.new("TextButton", gridFrame)
-		btn.BackgroundColor3 = isSel and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
+		local isSelected = (amt == default)
+		btn.BackgroundColor3 = isSelected and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35)
 		btn.BorderSizePixel = 0
 		btn.Size = UDim2.new(0, btnW, 0, btnH)
 		btn.Font = Enum.Font.GothamBold
 		btn.Text = "x" .. amt
-		btn.TextColor3 = isSel and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
+		btn.TextColor3 = isSelected and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
 		btn.TextSize = 11
 		btn.AutoButtonColor = false
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
@@ -1389,21 +1511,23 @@ function UILib._SectionMethods:AddQuantitySelector(config)
 		local bStroke = Instance.new("UIStroke", btn)
 		bStroke.Color = Color3.fromRGB(85, 85, 85)
 		bStroke.Thickness = 1
-		bStroke.Transparency = isSel and 1 or 0
+		bStroke.Transparency = isSelected and 1 or 0
 
 		buttons[amt] = btn
 
 		btn.MouseButton1Click:Connect(function()
 			selected = amt
 			for a, b in pairs(buttons) do
-				local s = (a == amt)
+				local isSel = (a == amt)
 				TweenService:Create(b, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
-					BackgroundColor3 = s and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35),
-					TextColor3 = s and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
+					BackgroundColor3 = isSel and Color3.fromRGB(210, 210, 210) or Color3.fromRGB(35, 35, 35),
+					TextColor3 = isSel and Color3.fromRGB(50, 50, 50) or Color3.fromRGB(240, 240, 240)
 				}):Play()
-				local st = b:FindFirstChildOfClass("UIStroke")
-				if st then
-					TweenService:Create(st, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {Transparency = s and 1 or 0}):Play()
+				local s = b:FindFirstChildOfClass("UIStroke")
+				if s then
+					TweenService:Create(s, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+						Transparency = isSel and 1 or 0
+					}):Play()
 				end
 			end
 			callback(amt)
