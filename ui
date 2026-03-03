@@ -1,12 +1,11 @@
 -- UILibrary.lua
--- Mobile-Friendly Version with Anti-AFK Always On + Resizable Window
+-- Fixed Small Size + Anti-AFK Fixed + Resizable Window
 
 local UILib = {}
 UILib.__index = UILib
 
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local Players = game:GetService("Players")
 
 --=============================================
@@ -24,17 +23,46 @@ local function getScreenSize()
 	return Vector2.new(1920, 1080)
 end
 
-local function getScale()
-	local screen = getScreenSize()
-	local mobile = isMobile()
-	if mobile then
-		local shorter = math.min(screen.X, screen.Y)
-		if shorter < 400 then return 0.55 end
-		if shorter < 500 then return 0.62 end
-		if shorter < 700 then return 0.7 end
-		return 0.78
-	end
-	return 1
+--=============================================
+-- ANTI-AFK: Coba semua method yang tersedia
+--=============================================
+local function tryAntiAFKKick()
+	-- Method 1: VirtualUser (paling reliable)
+	local ok1 = pcall(function()
+		local VU = game:GetService("VirtualUser")
+		VU:CaptureController()
+		VU:ClickButton2(Vector2.new())
+	end)
+	if ok1 then return true end
+
+	-- Method 2: VirtualInputManager SendKeyEvent
+	local ok2 = pcall(function()
+		local VIM = game:GetService("VirtualInputManager")
+		VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+		task.wait(0.1)
+		VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+	end)
+	if ok2 then return true end
+
+	-- Method 3: VirtualInputManager mouse click
+	local ok3 = pcall(function()
+		local VIM = game:GetService("VirtualInputManager")
+		VIM:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+		task.wait(0.1)
+		VIM:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+	end)
+	if ok3 then return true end
+
+	-- Method 4: keypress via hookfunction/firesignal (executor specific)
+	local ok4 = pcall(function()
+		local VIM = game:GetService("VirtualInputManager")
+		VIM:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+		task.wait(0.1)
+		VIM:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+	end)
+	if ok4 then return true end
+
+	return false
 end
 
 --=============================================
@@ -50,52 +78,29 @@ function UILib.new(config)
 	self.ActiveTab = nil
 	self.UpdateCallbacks = {}
 	self.IsMobile = isMobile()
-	self.Scale = getScale()
 
-	-- Responsive size
-	local screen = getScreenSize()
-	if config.Size then
-		self.Size = config.Size
-	else
-		if self.IsMobile then
-			local w = math.min(screen.X - 20, 420)
-			local h = math.min(screen.Y - 60, 340)
-			self.Size = UDim2.new(0, w, 0, h)
-		else
-			self.Size = UDim2.new(0, 700, 0, 500)
-		end
-	end
+	-------------------------------------------------
+	-- FIXED SMALL SIZE: sama untuk mobile & desktop
+	-------------------------------------------------
+	self.Size = config.Size or UDim2.new(0, 400, 0, 310)
 
-	-- Layout dimensions based on mobile/desktop
-	if self.IsMobile then
-		self.SidebarWidth = 110
-		self.TitleBarHeight = 38
-		self.FontTitle = 13
-		self.FontTab = 11
-		self.FontElement = 11
-		self.FontSmall = 9
-		self.ElementHeight = 32
-		self.SectionPadding = 10
-		self.TabButtonHeight = 32
-		self.TabButtonSpacing = 36
-	else
-		self.SidebarWidth = 160
-		self.TitleBarHeight = 50
-		self.FontTitle = 18
-		self.FontTab = 13
-		self.FontElement = 13
-		self.FontSmall = 11
-		self.ElementHeight = 40
-		self.SectionPadding = 15
-		self.TabButtonHeight = 38
-		self.TabButtonSpacing = 45
-	end
+	-- Layout: satu set ukuran kecil konsisten
+	self.SidebarWidth = 105
+	self.TitleBarHeight = 34
+	self.FontTitle = 12
+	self.FontTab = 10
+	self.FontElement = 10
+	self.FontSmall = 8
+	self.ElementHeight = 30
+	self.SectionPadding = 8
+	self.TabButtonHeight = 28
+	self.TabButtonSpacing = 32
 
-	-- Top bar offset (animated bar height)
+	-- Top bar offset
 	self.TopBarH = 3
 	self.HeaderTotal = self.TopBarH + self.TitleBarHeight
 
-	-- ========== [RESIZE] Inisialisasi flag ==========
+	-- Resize & minimize flags
 	self._resizing = false
 	self._minimized = false
 
@@ -131,20 +136,20 @@ function UILib.new(config)
 	self.Main.Position = UDim2.new(0.5, 0, 0.5, 0)
 	self.Main.Size = self.Size
 	self.Main.ClipsDescendants = true
-	Instance.new("UICorner", self.Main).CornerRadius = UDim.new(0, self.IsMobile and 10 or 12)
+	Instance.new("UICorner", self.Main).CornerRadius = UDim.new(0, 10)
 
 	local stroke = Instance.new("UIStroke", self.Main)
 	stroke.Color = Color3.fromRGB(60, 80, 180)
-	stroke.Thickness = self.IsMobile and 1 or 1.5
+	stroke.Thickness = 1
 	stroke.Transparency = 0.5
 
-	-- Dragging (dengan cek _resizing)
+	-- Dragging
 	self:_setupDrag()
 
-	-- Animated top bar line
+	-- Animated top bar
 	self:_createAnimatedBar()
 
-	-- Title Bar (dengan minimize yang menggunakan self._minimized)
+	-- Title Bar
 	self:_createTitleBar()
 
 	-- Sidebar
@@ -164,10 +169,10 @@ function UILib.new(config)
 	self.StatusLabels = {}
 	self:_createStatusArea()
 
-	-- ========== [RESIZE] Setup Resize Handle ==========
+	-- Resize Handle
 	self:_setupResize()
 
-	-- Anti-AFK Always On
+	-- Anti-AFK (FIXED)
 	self:_startAntiAFK()
 
 	-- Open animation
@@ -180,52 +185,77 @@ function UILib.new(config)
 		ImageTransparency = 0.6
 	}):Play()
 
-	-- Start update loop
+	-- Update loop
 	self:_startUpdateLoop()
 
 	return self
 end
 
 --=============================================
--- INTERNAL: Anti-AFK System (Always On)
+-- INTERNAL: Anti-AFK System (FIXED)
 --=============================================
 function UILib:_startAntiAFK()
 	local player = Players.LocalPlayer
-	if player then
-		local idleConn
-		idleConn = player.Idled:Connect(function()
-			pcall(function()
-				VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
-				task.wait(0.1)
-				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-			end)
-		end)
-		self._antiAfkIdleConnection = idleConn
-	end
+	if not player then return end
 
 	self._antiAfkActive = true
+
+	-------------------------------------------
+	-- 1) Tangkap event Idled (paling penting!)
+	--    Event ini muncul saat Roblox detect
+	--    player idle ~20 menit
+	-------------------------------------------
+	self._antiAfkIdleConnection = player.Idled:Connect(function()
+		if not self._antiAfkActive then return end
+		tryAntiAFKKick()
+	end)
+
+	-------------------------------------------
+	-- 2) Preventif: kirim input setiap 60 detik
+	--    supaya Idled event tidak pernah muncul
+	-------------------------------------------
 	self._antiAfkThread = task.spawn(function()
-		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
-			task.wait(60)
+		while self._antiAfkActive do
+			task.wait(55) -- sebelum 60 detik idle timer
 			if not self._antiAfkActive then break end
-			pcall(function()
-				VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F13, false, game)
-				task.wait(0.1)
-				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F13, false, game)
+			if not (self.ScreenGui and self.ScreenGui.Parent) then break end
+
+			-- Coba VirtualUser dulu
+			local ok = pcall(function()
+				local VU = game:GetService("VirtualUser")
+				VU:CaptureController()
+				VU:ClickButton2(Vector2.new())
 			end)
+
+			-- Fallback VirtualInputManager
+			if not ok then
+				pcall(function()
+					local VIM = game:GetService("VirtualInputManager")
+					VIM:SendKeyEvent(true, Enum.KeyCode.F13, false, game)
+					task.wait(0.1)
+					VIM:SendKeyEvent(false, Enum.KeyCode.F13, false, game)
+				end)
+			end
 		end
 	end)
 
+	-------------------------------------------
+	-- 3) Backup mouse move setiap 90 detik
+	-------------------------------------------
 	self._antiAfkMouseThread = task.spawn(function()
-		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
-			task.wait(120)
+		while self._antiAfkActive do
+			task.wait(90)
 			if not self._antiAfkActive then break end
+			if not (self.ScreenGui and self.ScreenGui.Parent) then break end
+
 			pcall(function()
-				VirtualInputManager:SendMouseMoveEvent(math.random(100, 500), math.random(100, 500), game)
+				local VIM = game:GetService("VirtualInputManager")
+				VIM:SendMouseMoveEvent(math.random(100, 400), math.random(100, 400), game)
 			end)
 		end
 	end)
 
+	-- Indicator
 	self:_createAntiAfkIndicator()
 end
 
@@ -233,27 +263,26 @@ end
 -- INTERNAL: Anti-AFK Indicator
 --=============================================
 function UILib:_createAntiAfkIndicator()
-	local size = self.IsMobile and 6 or 8
-	local fontSize = self.IsMobile and 7 or 9
-	local offsetX = self.IsMobile and -85 or -120
+	local size = 6
+	local fontSize = 7
 
 	local indicator = Instance.new("Frame", self.TitleBar)
 	indicator.Name = "AntiAfkIndicator"
 	indicator.BackgroundTransparency = 1
-	indicator.Position = UDim2.new(1, offsetX, 0, self.IsMobile and 10 or 15)
+	indicator.Position = UDim2.new(1, -82, 0, 9)
 	indicator.Size = UDim2.new(0, 32, 0, 16)
 
 	local dot = Instance.new("Frame", indicator)
 	dot.Name = "Dot"
 	dot.BackgroundColor3 = Color3.fromRGB(50, 255, 100)
 	dot.BorderSizePixel = 0
-	dot.Position = UDim2.new(0, 0, 0.5, -size/2)
+	dot.Position = UDim2.new(0, 0, 0.5, -size / 2)
 	dot.Size = UDim2.new(0, size, 0, size)
 	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
 	local label = Instance.new("TextLabel", indicator)
 	label.BackgroundTransparency = 1
-	label.Position = UDim2.new(0, size + 4, 0, 0)
+	label.Position = UDim2.new(0, size + 3, 0, 0)
 	label.Size = UDim2.new(0, 22, 1, 0)
 	label.Font = Enum.Font.GothamBold
 	label.Text = "AFK"
@@ -263,36 +292,30 @@ function UILib:_createAntiAfkIndicator()
 
 	self._antiAfkDot = dot
 	task.spawn(function()
-		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
-			if dot and dot.Parent then
-				TweenService:Create(dot, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {
-					BackgroundTransparency = 0.6
-				}):Play()
-				task.wait(0.8)
-				if not (dot and dot.Parent) then break end
-				TweenService:Create(dot, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {
-					BackgroundTransparency = 0
-				}):Play()
-				task.wait(0.8)
-			else
-				break
-			end
+		while self._antiAfkActive and dot and dot.Parent do
+			TweenService:Create(dot, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {
+				BackgroundTransparency = 0.6
+			}):Play()
+			task.wait(0.8)
+			if not (dot and dot.Parent) then break end
+			TweenService:Create(dot, TweenInfo.new(0.8, Enum.EasingStyle.Sine), {
+				BackgroundTransparency = 0
+			}):Play()
+			task.wait(0.8)
 		end
 	end)
 end
 
 --=============================================
--- INTERNAL: Drag System [MODIFIED - cek _resizing]
+-- INTERNAL: Drag System
 --=============================================
 function UILib:_setupDrag()
 	local dragging, dragInput, dragStart, startPos
 
 	self.Main.InputBegan:Connect(function(input)
-		-- [RESIZE] Jangan drag kalau sedang resize
 		if self._resizing then return end
-
-		if input.UserInputType == Enum.UserInputType.MouseButton1 
-		or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = input.Position
 			startPos = self.Main.Position
@@ -305,14 +328,13 @@ function UILib:_setupDrag()
 	end)
 
 	self.Main.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement 
-		or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
 			dragInput = input
 		end
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
-		-- [RESIZE] Jangan drag kalau sedang resize
 		if input == dragInput and dragging and not self._resizing then
 			local delta = input.Position - dragStart
 			local newPos = UDim2.new(
@@ -326,21 +348,19 @@ function UILib:_setupDrag()
 end
 
 --=============================================
--- INTERNAL: Resize System [NEW]
+-- INTERNAL: Resize System
 --=============================================
 function UILib:_setupResize()
-	local handleSize = self.IsMobile and 24 or 22
-	local dotSize = self.IsMobile and 2 or 3
-	local dotGap = self.IsMobile and 4 or 4
+	local handleSize = 22
+	local dotSize = 2
+	local dotGap = 4
 
-	-- Batas minimum & maksimum
-	local minW = self.SidebarWidth + (self.IsMobile and 100 or 180)
-	local minH = self.HeaderTotal + (self.IsMobile and 80 or 120)
+	local minW = self.SidebarWidth + 100
+	local minH = self.HeaderTotal + 80
 	local screen = getScreenSize()
-	local maxW = math.min(screen.X - 10, 1400)
-	local maxH = math.min(screen.Y - 20, 1000)
+	local maxW = math.min(screen.X - 10, 1200)
+	local maxH = math.min(screen.Y - 20, 900)
 
-	-- Handle frame di pojok kanan bawah
 	local handle = Instance.new("Frame", self.Main)
 	handle.Name = "ResizeHandle"
 	handle.BackgroundTransparency = 1
@@ -348,29 +368,23 @@ function UILib:_setupResize()
 	handle.Size = UDim2.new(0, handleSize, 0, handleSize)
 	handle.ZIndex = 10
 
-	-- Gambar grip dots (pola segitiga)
 	local gripDots = {}
 	for row = 0, 2 do
 		for col = 0, 2 - row do
-			local dot = Instance.new("Frame", handle)
-			dot.Name = "GripDot"
-			dot.BackgroundColor3 = Color3.fromRGB(80, 100, 180)
-			dot.BackgroundTransparency = 0.3
-			dot.BorderSizePixel = 0
-			dot.Size = UDim2.new(0, dotSize, 0, dotSize)
-			dot.Position = UDim2.new(
-				1, -(3 + col * (dotSize + dotGap)),
-				1, -(3 + row * (dotSize + dotGap))
-			)
-			dot.AnchorPoint = Vector2.new(1, 1)
-			dot.ZIndex = 10
-			Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-			table.insert(gripDots, dot)
+			local d = Instance.new("Frame", handle)
+			d.Name = "GripDot"
+			d.BackgroundColor3 = Color3.fromRGB(80, 100, 180)
+			d.BackgroundTransparency = 0.3
+			d.BorderSizePixel = 0
+			d.Size = UDim2.new(0, dotSize, 0, dotSize)
+			d.Position = UDim2.new(1, -(3 + col * (dotSize + dotGap)), 1, -(3 + row * (dotSize + dotGap)))
+			d.AnchorPoint = Vector2.new(1, 1)
+			d.ZIndex = 10
+			Instance.new("UICorner", d).CornerRadius = UDim.new(1, 0)
+			table.insert(gripDots, d)
 		end
 	end
 
-	-- Tombol transparan di atas handle agar bisa menangkap input
-	-- Diperbesar sedikit untuk kemudahan sentuh di mobile
 	local hitPad = self.IsMobile and 10 or 6
 	local btn = Instance.new("TextButton", handle)
 	btn.Name = "ResizeBtn"
@@ -385,7 +399,6 @@ function UILib:_setupResize()
 	local resizing = false
 	local resizeStart, startSize, startPos
 
-	-- Fungsi set warna dots
 	local function setDotStyle(color, transparency)
 		for _, d in ipairs(gripDots) do
 			if d and d.Parent then
@@ -397,64 +410,49 @@ function UILib:_setupResize()
 		end
 	end
 
-	-- Mulai resize
 	btn.InputBegan:Connect(function(input)
 		if self._minimized then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1 
-		or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
 			resizing = true
 			self._resizing = true
 			resizeStart = input.Position
 			startSize = Vector2.new(self.Main.Size.X.Offset, self.Main.Size.Y.Offset)
 			startPos = self.Main.Position
-
-			-- Visual feedback: dots jadi terang
 			setDotStyle(Color3.fromRGB(160, 200, 255), 0)
-
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
 					resizing = false
 					self._resizing = false
-					-- Kembalikan warna dots
 					setDotStyle(Color3.fromRGB(80, 100, 180), 0.3)
 				end
 			end)
 		end
 	end)
 
-	-- Hover effect
 	btn.MouseEnter:Connect(function()
-		if not resizing then
-			setDotStyle(Color3.fromRGB(130, 160, 255), 0)
-		end
+		if not resizing then setDotStyle(Color3.fromRGB(130, 160, 255), 0) end
 	end)
 	btn.MouseLeave:Connect(function()
-		if not resizing then
-			setDotStyle(Color3.fromRGB(80, 100, 180), 0.3)
-		end
+		if not resizing then setDotStyle(Color3.fromRGB(80, 100, 180), 0.3) end
 	end)
 
-	-- Update ukuran saat resize
 	UserInputService.InputChanged:Connect(function(input)
-		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement 
-		or input.UserInputType == Enum.UserInputType.Touch) then
+		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - resizeStart
 			local newW = math.clamp(startSize.X + delta.X, minW, maxW)
 			local newH = math.clamp(startSize.Y + delta.Y, minH, maxH)
-
-			-- Kompensasi AnchorPoint 0.5 agar top-left tetap di tempat
 			local deltaW = newW - startSize.X
 			local deltaH = newH - startSize.Y
-
 			local newSize = UDim2.new(0, newW, 0, newH)
 			local newPos = UDim2.new(
 				startPos.X.Scale, startPos.X.Offset + deltaW / 2,
 				startPos.Y.Scale, startPos.Y.Offset + deltaH / 2
 			)
-
 			self.Main.Size = newSize
 			self.Main.Position = newPos
-			self.Size = newSize -- Update supaya minimize/restore benar
+			self.Size = newSize
 			self.Shadow.Size = newSize + UDim2.new(0, 30, 0, 30)
 			self.Shadow.Position = newPos
 		end
@@ -497,7 +495,6 @@ end
 
 --=============================================
 -- INTERNAL: Title Bar + Close/Minimize
--- [MODIFIED - minimize pakai self._minimized]
 --=============================================
 function UILib:_createTitleBar()
 	self.TitleBar = Instance.new("Frame", self.Main)
@@ -508,8 +505,8 @@ function UILib:_createTitleBar()
 
 	local titleLabel = Instance.new("TextLabel", self.TitleBar)
 	titleLabel.BackgroundTransparency = 1
-	titleLabel.Position = UDim2.new(0, 12, 0, 0)
-	titleLabel.Size = UDim2.new(0, self.IsMobile and 140 or 250, 1, 0)
+	titleLabel.Position = UDim2.new(0, 10, 0, 0)
+	titleLabel.Size = UDim2.new(0, 140, 1, 0)
 	titleLabel.Font = Enum.Font.GothamBold
 	titleLabel.Text = self.Title
 	titleLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
@@ -517,16 +514,16 @@ function UILib:_createTitleBar()
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-	local btnSize = self.IsMobile and 24 or 30
-	local btnFont = self.IsMobile and 11 or 14
-	local btnGap = btnSize + 5
+	local btnSize = 22
+	local btnFont = 10
+	local btnGap = btnSize + 4
 
-	-- Close Button
+	-- Close
 	local closeBtn = Instance.new("TextButton", self.TitleBar)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
 	closeBtn.BackgroundTransparency = 0.8
 	closeBtn.BorderSizePixel = 0
-	closeBtn.Position = UDim2.new(1, -(btnSize + 8), 0.5, -btnSize/2)
+	closeBtn.Position = UDim2.new(1, -(btnSize + 6), 0.5, -btnSize / 2)
 	closeBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
 	closeBtn.Font = Enum.Font.GothamBold
 	closeBtn.Text = "✕"
@@ -548,12 +545,12 @@ function UILib:_createTitleBar()
 		self.ScreenGui.Enabled = false
 	end)
 
-	-- Minimize Button
+	-- Minimize
 	local minBtn = Instance.new("TextButton", self.TitleBar)
 	minBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
 	minBtn.BackgroundTransparency = 0.8
 	minBtn.BorderSizePixel = 0
-	minBtn.Position = UDim2.new(1, -(btnSize + 8 + btnGap), 0.5, -btnSize/2)
+	minBtn.Position = UDim2.new(1, -(btnSize + 6 + btnGap), 0.5, -btnSize / 2)
 	minBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
 	minBtn.Font = Enum.Font.GothamBold
 	minBtn.Text = "—"
@@ -561,7 +558,6 @@ function UILib:_createTitleBar()
 	minBtn.TextSize = btnFont
 	Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 6)
 
-	-- [RESIZE] Menggunakan self._minimized agar resize tahu state minimize
 	minBtn.MouseButton1Click:Connect(function()
 		self._minimized = not self._minimized
 		if self._minimized then
@@ -571,7 +567,6 @@ function UILib:_createTitleBar()
 			TweenService:Create(self.Shadow, TweenInfo.new(0.3), {
 				Size = UDim2.new(0, self.Size.X.Offset + 30, 0, self.HeaderTotal + 30)
 			}):Play()
-			-- Sembunyikan resize handle saat minimize
 			if self.ResizeHandle then self.ResizeHandle.Visible = false end
 		else
 			TweenService:Create(self.Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
@@ -580,7 +575,6 @@ function UILib:_createTitleBar()
 			TweenService:Create(self.Shadow, TweenInfo.new(0.3), {
 				Size = self.Size + UDim2.new(0, 30, 0, 30)
 			}):Play()
-			-- Tampilkan kembali resize handle
 			if self.ResizeHandle then self.ResizeHandle.Visible = true end
 		end
 	end)
@@ -590,20 +584,18 @@ end
 -- INTERNAL: Status Area
 --=============================================
 function UILib:_createStatusArea()
-	if self.IsMobile then return end
-
 	local statusFrame = Instance.new("Frame", self.TitleBar)
 	statusFrame.BackgroundTransparency = 1
-	statusFrame.Position = UDim2.new(0, 260, 0, 0)
-	statusFrame.Size = UDim2.new(0, 200, 1, 0)
+	statusFrame.Position = UDim2.new(0, 155, 0, 0)
+	statusFrame.Size = UDim2.new(0, 100, 1, 0)
 
 	for i = 1, 3 do
 		local label = Instance.new("TextLabel", statusFrame)
 		label.BackgroundTransparency = 1
-		label.Position = UDim2.new(0, 0, 0, 3 + (i-1) * 15)
-		label.Size = UDim2.new(1, 0, 0, 15)
+		label.Position = UDim2.new(0, 0, 0, 2 + (i - 1) * 10)
+		label.Size = UDim2.new(1, 0, 0, 10)
 		label.Font = Enum.Font.GothamSemibold
-		label.TextSize = 10
+		label.TextSize = 7
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextColor3 = Color3.fromRGB(180, 180, 200)
 		label.Text = ""
@@ -617,9 +609,7 @@ end
 function UILib:SetStatus(line, text, color)
 	if self.StatusLabels[line] then
 		self.StatusLabels[line].Text = text
-		if color then
-			self.StatusLabels[line].TextColor3 = color
-		end
+		if color then self.StatusLabels[line].TextColor3 = color end
 	end
 end
 
@@ -650,16 +640,16 @@ end
 -- INTERNAL: Notification Bar
 --=============================================
 function UILib:_createNotifyBar()
-	local margin = self.IsMobile and 5 or 10
+	local margin = 5
 	self.NotifyBar = Instance.new("TextLabel", self.Main)
 	self.NotifyBar.BackgroundColor3 = Color3.fromRGB(30, 80, 30)
 	self.NotifyBar.BackgroundTransparency = 1
-	self.NotifyBar.Position = UDim2.new(0, self.SidebarWidth + margin, 1, self.IsMobile and -22 or -30)
-	self.NotifyBar.Size = UDim2.new(1, -(self.SidebarWidth + margin + 5), 0, self.IsMobile and 18 or 25)
+	self.NotifyBar.Position = UDim2.new(0, self.SidebarWidth + margin, 1, -20)
+	self.NotifyBar.Size = UDim2.new(1, -(self.SidebarWidth + margin + 5), 0, 16)
 	self.NotifyBar.Font = Enum.Font.GothamSemibold
 	self.NotifyBar.Text = ""
 	self.NotifyBar.TextColor3 = Color3.fromRGB(80, 255, 120)
-	self.NotifyBar.TextSize = self.IsMobile and 9 or 11
+	self.NotifyBar.TextSize = 8
 	self.NotifyBar.TextXAlignment = Enum.TextXAlignment.Left
 	self.NotifyBar.TextTransparency = 1
 	self.NotifyBar.TextTruncate = Enum.TextTruncate.AtEnd
@@ -700,14 +690,14 @@ function UILib:AddTab(config)
 	self._tabIndex = self._tabIndex + 1
 	local index = self._tabIndex
 
-	local btnPadX = self.IsMobile and 4 or 8
+	local btnPadX = 4
 	local btnH = self.TabButtonHeight
 	local spacing = self.TabButtonSpacing
 
 	local btn = Instance.new("TextButton", self.Sidebar)
 	btn.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
 	btn.BorderSizePixel = 0
-	btn.Position = UDim2.new(0, btnPadX, 0, 6 + (index - 1) * spacing)
+	btn.Position = UDim2.new(0, btnPadX, 0, 5 + (index - 1) * spacing)
 	btn.Size = UDim2.new(1, -btnPadX * 2, 0, btnH)
 	btn.Text = ""
 	btn.AutoButtonColor = false
@@ -725,8 +715,8 @@ function UILib:AddTab(config)
 	local label = Instance.new("TextLabel", btn)
 	label.Name = "Label"
 	label.BackgroundTransparency = 1
-	label.Position = UDim2.new(0, 10, 0, 0)
-	label.Size = UDim2.new(1, -10, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.Size = UDim2.new(1, -8, 1, 0)
 	label.Font = Enum.Font.GothamBold
 	label.Text = tabIcon .. " " .. tabName
 	label.TextColor3 = Color3.fromRGB(120, 120, 140)
@@ -734,12 +724,12 @@ function UILib:AddTab(config)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 
-	local contentPad = self.IsMobile and 8 or 15
+	local contentPad = 6
 
 	local page = Instance.new("ScrollingFrame", self.ContentArea)
 	page.BackgroundTransparency = 1
 	page.BorderSizePixel = 0
-	page.Position = UDim2.new(0, contentPad, 0, contentPad * 0.6)
+	page.Position = UDim2.new(0, contentPad, 0, contentPad)
 	page.Size = UDim2.new(1, -contentPad * 2, 1, -contentPad)
 	page.ScrollBarThickness = 3
 	page.ScrollBarImageColor3 = Color3.fromRGB(60, 80, 180)
@@ -749,7 +739,7 @@ function UILib:AddTab(config)
 
 	Instance.new("UIPadding", page).PaddingRight = UDim.new(0, 6)
 	local layout = Instance.new("UIListLayout", page)
-	layout.Padding = UDim.new(0, self.IsMobile and 8 or 12)
+	layout.Padding = UDim.new(0, 8)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 
 	self.TabButtons[tabName] = btn
@@ -771,7 +761,7 @@ function UILib:AddTab(config)
 		Library = self,
 		_sectionOrder = 0
 	}
-	setmetatable(tab, {__index = UILib._TabMethods})
+	setmetatable(tab, { __index = UILib._TabMethods })
 
 	table.insert(self.Tabs, tab)
 	return tab
@@ -787,7 +777,6 @@ function UILib:SwitchTab(name)
 	for tabName, btn in pairs(self.TabButtons) do
 		local ind = btn:FindFirstChild("Indicator")
 		local lbl = btn:FindFirstChild("Label")
-
 		if tabName == name then
 			btn.BackgroundColor3 = Color3.fromRGB(60, 80, 180)
 			if lbl then lbl.TextColor3 = Color3.new(1, 1, 1) end
@@ -840,14 +829,14 @@ function UILib:CreateToggleButton(config)
 	toggleGui.Parent = game.CoreGui
 	toggleGui.ResetOnSpawn = false
 
-	local btnSize = self.IsMobile and 38 or 50
-	local txtSize = self.IsMobile and 18 or 24
+	local btnSize = 36
+	local txtSize = 16
 
 	local toggleBtn = Instance.new("TextButton", toggleGui)
 	toggleBtn.AnchorPoint = Vector2.new(0.5, 0.5)
 	toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 80, 180)
 	toggleBtn.BorderSizePixel = 0
-	toggleBtn.Position = UDim2.new(0, btnSize/2 + 10, 0.5, 0)
+	toggleBtn.Position = UDim2.new(0, btnSize / 2 + 8, 0.5, 0)
 	toggleBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
 	toggleBtn.Font = Enum.Font.GothamBold
 	toggleBtn.Text = icon
@@ -856,15 +845,15 @@ function UILib:CreateToggleButton(config)
 	toggleBtn.Draggable = true
 	Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 
-	local stroke = Instance.new("UIStroke", toggleBtn)
-	stroke.Color = Color3.fromRGB(100, 140, 255)
-	stroke.Thickness = self.IsMobile and 1.5 or 2
+	local stk = Instance.new("UIStroke", toggleBtn)
+	stk.Color = Color3.fromRGB(100, 140, 255)
+	stk.Thickness = 1.5
 
 	task.spawn(function()
 		while toggleGui and toggleGui.Parent do
-			stroke.Transparency = 0.8
+			stk.Transparency = 0.8
 			task.wait(1.5)
-			stroke.Transparency = 0
+			stk.Transparency = 0
 			task.wait(1.5)
 		end
 	end)
@@ -907,15 +896,15 @@ function UILib._TabMethods:AddSection(config)
 	section.Size = UDim2.new(1, 0, 0, 0)
 	section.AutomaticSize = Enum.AutomaticSize.Y
 	section.LayoutOrder = order
-	Instance.new("UICorner", section).CornerRadius = UDim.new(0, lib.IsMobile and 8 or 10)
+	Instance.new("UICorner", section).CornerRadius = UDim.new(0, 8)
 
 	local stroke = Instance.new("UIStroke", section)
 	stroke.Color = Color3.fromRGB(45, 45, 60)
 	stroke.Thickness = 1
 	stroke.Transparency = 0.5
 
-	local padV = lib.IsMobile and 8 or 12
-	local padH = lib.IsMobile and 10 or 15
+	local padV = 8
+	local padH = 10
 	local padding = Instance.new("UIPadding", section)
 	padding.PaddingLeft = UDim.new(0, padH)
 	padding.PaddingRight = UDim.new(0, padH)
@@ -923,16 +912,16 @@ function UILib._TabMethods:AddSection(config)
 	padding.PaddingBottom = UDim.new(0, padV + 3)
 
 	local layout = Instance.new("UIListLayout", section)
-	layout.Padding = UDim.new(0, lib.IsMobile and 6 or 10)
+	layout.Padding = UDim.new(0, 6)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local titleLabel = Instance.new("TextLabel", section)
 	titleLabel.BackgroundTransparency = 1
-	titleLabel.Size = UDim2.new(1, 0, 0, lib.IsMobile and 18 or 22)
+	titleLabel.Size = UDim2.new(1, 0, 0, 16)
 	titleLabel.Font = Enum.Font.GothamBold
 	titleLabel.Text = title
 	titleLabel.TextColor3 = Color3.fromRGB(200, 200, 220)
-	titleLabel.TextSize = lib.IsMobile and 12 or 15
+	titleLabel.TextSize = 11
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.LayoutOrder = 0
 
@@ -942,7 +931,7 @@ function UILib._TabMethods:AddSection(config)
 		Library = lib,
 		_elementOrder = 0
 	}
-	setmetatable(sec, {__index = UILib._SectionMethods})
+	setmetatable(sec, { __index = UILib._SectionMethods })
 	return sec
 end
 
@@ -968,12 +957,11 @@ function UILib._TabMethods:AddNote(config)
 	noteText.Font = Enum.Font.Gotham
 	noteText.Text = text
 	noteText.TextColor3 = Color3.fromRGB(150, 180, 255)
-	noteText.TextSize = lib.IsMobile and 9 or 11
+	noteText.TextSize = 9
 	noteText.TextWrapped = true
 	noteText.TextXAlignment = Enum.TextXAlignment.Left
 
 	Instance.new("UIPadding", noteFrame).PaddingBottom = UDim.new(0, 8)
-
 	return noteText
 end
 
@@ -1000,8 +988,8 @@ function UILib._SectionMethods:AddToggle(config)
 
 	local label = Instance.new("TextLabel", frame)
 	label.BackgroundTransparency = 1
-	label.Position = UDim2.new(0, 10, 0, 0)
-	label.Size = UDim2.new(1, -60, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.Size = UDim2.new(1, -50, 1, 0)
 	label.Font = Enum.Font.GothamSemibold
 	label.Text = text
 	label.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -1009,21 +997,21 @@ function UILib._SectionMethods:AddToggle(config)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 
-	local toggleW = lib.IsMobile and 36 or 44
-	local toggleH = lib.IsMobile and 20 or 24
-	local knobSize = lib.IsMobile and 14 or 18
+	local toggleW = 34
+	local toggleH = 18
+	local knobSize = 13
 
 	local bg = Instance.new("Frame", frame)
 	bg.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
 	bg.BorderSizePixel = 0
-	bg.Position = UDim2.new(1, -(toggleW + 10), 0.5, -toggleH/2)
+	bg.Position = UDim2.new(1, -(toggleW + 8), 0.5, -toggleH / 2)
 	bg.Size = UDim2.new(0, toggleW, 0, toggleH)
 	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
 
 	local knob = Instance.new("Frame", bg)
 	knob.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
 	knob.BorderSizePixel = 0
-	knob.Position = UDim2.new(0, 3, 0.5, -knobSize/2)
+	knob.Position = UDim2.new(0, 3, 0.5, -knobSize / 2)
 	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
 	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
@@ -1032,11 +1020,11 @@ function UILib._SectionMethods:AddToggle(config)
 	local function updateVisual()
 		if active then
 			bg.BackgroundColor3 = Color3.fromRGB(60, 160, 100)
-			knob.Position = UDim2.new(1, -(knobSize + 3), 0.5, -knobSize/2)
+			knob.Position = UDim2.new(1, -(knobSize + 3), 0.5, -knobSize / 2)
 			knob.BackgroundColor3 = Color3.new(1, 1, 1)
 		else
 			bg.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-			knob.Position = UDim2.new(0, 3, 0.5, -knobSize/2)
+			knob.Position = UDim2.new(0, 3, 0.5, -knobSize / 2)
 			knob.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
 		end
 	end
@@ -1076,7 +1064,7 @@ function UILib._SectionMethods:AddButton(config)
 	btn.Font = Enum.Font.GothamBold
 	btn.Text = text
 	btn.TextColor3 = Color3.new(1, 1, 1)
-	btn.TextSize = lib.IsMobile and 12 or 14
+	btn.TextSize = 11
 	btn.AutoButtonColor = false
 	btn.LayoutOrder = order
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
@@ -1097,7 +1085,7 @@ function UILib._SectionMethods:AddLabel(config)
 	local text = config.Text or ""
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
-	local h = config.Height or (lib.IsMobile and 24 or 30)
+	local h = config.Height or 22
 
 	local label = Instance.new("TextLabel", self.Frame)
 	label.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
@@ -1106,16 +1094,16 @@ function UILib._SectionMethods:AddLabel(config)
 	label.Font = Enum.Font.GothamSemibold
 	label.Text = text
 	label.TextColor3 = config.TextColor or Color3.fromRGB(150, 150, 170)
-	label.TextSize = config.TextSize or (lib.IsMobile and 10 or 12)
+	label.TextSize = config.TextSize or 9
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextWrapped = true
 	label.LayoutOrder = order
 	Instance.new("UICorner", label).CornerRadius = UDim.new(0, 6)
 
 	local padding = Instance.new("UIPadding", label)
-	padding.PaddingLeft = UDim.new(0, 10)
-	padding.PaddingRight = UDim.new(0, 8)
-	if h > 35 then padding.PaddingTop = UDim.new(0, 6) end
+	padding.PaddingLeft = UDim.new(0, 8)
+	padding.PaddingRight = UDim.new(0, 6)
+	if h > 30 then padding.PaddingTop = UDim.new(0, 4) end
 
 	return label
 end
@@ -1124,7 +1112,6 @@ function UILib._SectionMethods:AddNote(config)
 	self._elementOrder = self._elementOrder + 1
 	local text = config.Text or ""
 	local order = config.Order or self._elementOrder
-	local lib = self.Library
 
 	local noteFrame = Instance.new("Frame", self.Frame)
 	noteFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
@@ -1138,15 +1125,15 @@ function UILib._SectionMethods:AddNote(config)
 	noteText.BackgroundTransparency = 1
 	noteText.Size = UDim2.new(1, -16, 0, 0)
 	noteText.AutomaticSize = Enum.AutomaticSize.Y
-	noteText.Position = UDim2.new(0, 8, 0, 6)
+	noteText.Position = UDim2.new(0, 8, 0, 5)
 	noteText.Font = Enum.Font.Gotham
 	noteText.Text = text
 	noteText.TextColor3 = Color3.fromRGB(150, 180, 255)
-	noteText.TextSize = lib.IsMobile and 9 or 11
+	noteText.TextSize = 9
 	noteText.TextWrapped = true
 	noteText.TextXAlignment = Enum.TextXAlignment.Left
 
-	Instance.new("UIPadding", noteFrame).PaddingBottom = UDim.new(0, 8)
+	Instance.new("UIPadding", noteFrame).PaddingBottom = UDim.new(0, 7)
 	return noteText
 end
 
@@ -1157,7 +1144,7 @@ function UILib._SectionMethods:AddFeature(config)
 	local color = config.Color or Color3.fromRGB(100, 200, 255)
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
-	local h = lib.IsMobile and 28 or 36
+	local h = 26
 
 	local frame = Instance.new("Frame", self.Frame)
 	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
@@ -1166,21 +1153,21 @@ function UILib._SectionMethods:AddFeature(config)
 	frame.LayoutOrder = order
 	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
-	local indicator = Instance.new("Frame", frame)
-	indicator.BackgroundColor3 = color
-	indicator.BorderSizePixel = 0
-	indicator.Size = UDim2.new(0, 3, 0.6, 0)
-	indicator.Position = UDim2.new(0, 0, 0.2, 0)
-	Instance.new("UICorner", indicator).CornerRadius = UDim.new(0, 2)
+	local ind = Instance.new("Frame", frame)
+	ind.BackgroundColor3 = color
+	ind.BorderSizePixel = 0
+	ind.Size = UDim2.new(0, 3, 0.6, 0)
+	ind.Position = UDim2.new(0, 0, 0.2, 0)
+	Instance.new("UICorner", ind).CornerRadius = UDim.new(0, 2)
 
 	local label = Instance.new("TextLabel", frame)
 	label.BackgroundTransparency = 1
-	label.Position = UDim2.new(0, 10, 0, 0)
-	label.Size = UDim2.new(1, -15, 1, 0)
+	label.Position = UDim2.new(0, 8, 0, 0)
+	label.Size = UDim2.new(1, -12, 1, 0)
 	label.Font = Enum.Font.GothamSemibold
 	label.Text = icon .. "  " .. text
 	label.TextColor3 = Color3.fromRGB(190, 190, 210)
-	label.TextSize = lib.IsMobile and 10 or 12
+	label.TextSize = 9
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 
@@ -1194,8 +1181,8 @@ function UILib._SectionMethods:AddButtonGrid(config)
 	local order = config.Order or self._elementOrder
 	local selected = config.Default or (items[1] and items[1].name)
 	local lib = self.Library
-	local btnW = config.ButtonWidth or (lib.IsMobile and 58 or 80)
-	local gridH = lib.IsMobile and 42 or 55
+	local btnW = config.ButtonWidth or 55
+	local gridH = 40
 
 	local gridFrame = Instance.new("ScrollingFrame", self.Frame)
 	gridFrame.BackgroundTransparency = 1
@@ -1209,7 +1196,7 @@ function UILib._SectionMethods:AddButtonGrid(config)
 
 	local gridLayout = Instance.new("UIListLayout", gridFrame)
 	gridLayout.FillDirection = Enum.FillDirection.Horizontal
-	gridLayout.Padding = UDim.new(0, lib.IsMobile and 4 or 6)
+	gridLayout.Padding = UDim.new(0, 4)
 	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local buttons = {}
@@ -1218,7 +1205,7 @@ function UILib._SectionMethods:AddButtonGrid(config)
 		local btn = Instance.new("TextButton", gridFrame)
 		btn.BackgroundColor3 = (item.name == selected) and (item.color or Color3.fromRGB(60, 80, 180)) or Color3.fromRGB(35, 35, 48)
 		btn.BorderSizePixel = 0
-		btn.Size = UDim2.new(0, btnW, 0, gridH - 5)
+		btn.Size = UDim2.new(0, btnW, 0, gridH - 4)
 		btn.Text = ""
 		btn.AutoButtonColor = false
 		btn.LayoutOrder = i
@@ -1226,18 +1213,18 @@ function UILib._SectionMethods:AddButtonGrid(config)
 
 		local iconLabel = Instance.new("TextLabel", btn)
 		iconLabel.BackgroundTransparency = 1
-		iconLabel.Size = UDim2.new(1, 0, 0, lib.IsMobile and 20 or 28)
+		iconLabel.Size = UDim2.new(1, 0, 0, 18)
 		iconLabel.Text = item.icon or "📦"
-		iconLabel.TextSize = lib.IsMobile and 14 or 18
+		iconLabel.TextSize = 13
 		iconLabel.Font = Enum.Font.GothamBold
 
 		local nameLabel = Instance.new("TextLabel", btn)
 		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.new(0, 0, 0, lib.IsMobile and 20 or 28)
-		nameLabel.Size = UDim2.new(1, 0, 0, lib.IsMobile and 14 or 18)
+		nameLabel.Position = UDim2.new(0, 0, 0, 18)
+		nameLabel.Size = UDim2.new(1, 0, 0, 14)
 		nameLabel.Text = item.label or item.name
 		nameLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
-		nameLabel.TextSize = lib.IsMobile and 7 or 9
+		nameLabel.TextSize = 7
 		nameLabel.Font = Enum.Font.GothamSemibold
 		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
@@ -1280,7 +1267,7 @@ function UILib._SectionMethods:AddTextBox(config)
 	local callback = config.Callback or function() end
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
-	local h = lib.IsMobile and 34 or 42
+	local h = 30
 
 	local frame = Instance.new("Frame", self.Frame)
 	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
@@ -1291,14 +1278,14 @@ function UILib._SectionMethods:AddTextBox(config)
 
 	local textbox = Instance.new("TextBox", frame)
 	textbox.BackgroundTransparency = 1
-	textbox.Position = UDim2.new(0, 10, 0, 0)
-	textbox.Size = UDim2.new(1, -20, 1, 0)
+	textbox.Position = UDim2.new(0, 8, 0, 0)
+	textbox.Size = UDim2.new(1, -16, 1, 0)
 	textbox.Font = Enum.Font.Gotham
 	textbox.PlaceholderText = placeholder
 	textbox.PlaceholderColor3 = Color3.fromRGB(80, 80, 100)
 	textbox.Text = default
 	textbox.TextColor3 = Color3.new(1, 1, 1)
-	textbox.TextSize = lib.IsMobile and 12 or 14
+	textbox.TextSize = 11
 	textbox.TextXAlignment = Enum.TextXAlignment.Left
 
 	textbox.FocusLost:Connect(function() callback(textbox.Text) end)
@@ -1312,8 +1299,8 @@ function UILib._SectionMethods:AddQuantitySelector(config)
 	local callback = config.Callback or function() end
 	local order = config.Order or self._elementOrder
 	local lib = self.Library
-	local btnW = lib.IsMobile and 48 or 65
-	local btnH = lib.IsMobile and 28 or 34
+	local btnW = 45
+	local btnH = 26
 
 	local gridFrame = Instance.new("ScrollingFrame", self.Frame)
 	gridFrame.BackgroundTransparency = 1
@@ -1326,7 +1313,7 @@ function UILib._SectionMethods:AddQuantitySelector(config)
 
 	local gridLayout = Instance.new("UIListLayout", gridFrame)
 	gridLayout.FillDirection = Enum.FillDirection.Horizontal
-	gridLayout.Padding = UDim.new(0, lib.IsMobile and 4 or 6)
+	gridLayout.Padding = UDim.new(0, 4)
 
 	local selected = default
 	local buttons = {}
@@ -1339,7 +1326,7 @@ function UILib._SectionMethods:AddQuantitySelector(config)
 		btn.Font = Enum.Font.GothamBold
 		btn.Text = "x" .. amt
 		btn.TextColor3 = Color3.new(1, 1, 1)
-		btn.TextSize = lib.IsMobile and 10 or 13
+		btn.TextSize = 9
 		btn.AutoButtonColor = false
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
 
