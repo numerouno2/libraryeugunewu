@@ -1,849 +1,768 @@
--- UILibrary.lua — Premium Visual Redesign
--- API 100% sama dengan versi asli — drop-in replacement
--- Visual: Nexus-style, compact, mobile-friendly, polished
+--=============================================
+-- MODERN RESIZABLE UI LIBRARY WITH ANTI-AFK
+-- Optimized for Performance & Mobile-Friendly
+--=============================================
 
 local UILib = {}
 UILib.__index = UILib
 
-local TweenService        = game:GetService("TweenService")
-local UserInputService    = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local Players             = game:GetService("Players")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
--- ┌─────────────────────────────────────┐
--- │  DESIGN TOKENS                      │
--- └─────────────────────────────────────┘
-local D = {
-	-- Background layers (deep midnight navy)
-	BG0 = Color3.fromRGB(7,   7,  11),
-	BG1 = Color3.fromRGB(12,  12, 18),   -- window base
-	BG2 = Color3.fromRGB(16,  16, 24),   -- sidebar / titlebar
-	BG3 = Color3.fromRGB(21,  21, 33),   -- section card
-	BG4 = Color3.fromRGB(28,  28, 44),   -- element / header
-	BG5 = Color3.fromRGB(36,  36, 56),   -- hover / input
-
-	-- Accent
-	ACC = Color3.fromRGB(95,  99, 242),   -- indigo
-	ACL = Color3.fromRGB(134, 138, 255),  -- indigo light
-	ACX = Color3.fromRGB(170, 172, 255),  -- indigo xlight
-
-	-- Status colours
-	GRN = Color3.fromRGB(48,  210, 150),  -- green
-	CYN = Color3.fromRGB(28,  208, 236),  -- cyan
-	YLW = Color3.fromRGB(250, 189,  34),  -- yellow
-	RED = Color3.fromRGB(248,  74,  74),  -- red
-
-	-- Text
-	T0  = Color3.fromRGB(240, 240, 252),  -- primary
-	T1  = Color3.fromRGB(165, 167, 200),  -- secondary
-	T2  = Color3.fromRGB(92,   95, 130),  -- muted
-	T3  = Color3.fromRGB(45,   47,  72),  -- dim
-
-	-- Border
-	BD  = Color3.fromRGB(26,  28,  46),
-	BDL = Color3.fromRGB(46,  48,  76),
-
-	-- Fonts (same as Roblox standard, but we pick consistently)
-	FB  = Enum.Font.GothamBold,
-	FSB = Enum.Font.GothamSemibold,
-	FN  = Enum.Font.Gotham,
-}
-
--- ┌─────────────────────────────────────┐
--- │  HELPERS (internal)                 │
--- └─────────────────────────────────────┘
+--=============================================
+-- HELPER: Detect Mobile & Get Screen Size
+--=============================================
 local function isMobile()
 	return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 end
 
 local function getScreenSize()
-	local cam = workspace.CurrentCamera
-	return cam and cam.ViewportSize or Vector2.new(1920, 1080)
+	local camera = workspace.CurrentCamera
+	if camera then
+		return camera.ViewportSize
+	end
+	return Vector2.new(1920, 1080)
 end
 
 local function getScale()
 	local screen = getScreenSize()
-	if isMobile() then
-		local s = math.min(screen.X, screen.Y)
-		if s < 400 then return 0.55 end
-		if s < 500 then return 0.62 end
-		if s < 700 then return 0.70 end
+	local mobile = isMobile()
+	if mobile then
+		local shorter = math.min(screen.X, screen.Y)
+		if shorter < 400 then return 0.55 end
+		if shorter < 500 then return 0.62 end
+		if shorter < 700 then return 0.7 end
 		return 0.78
 	end
 	return 1
 end
 
--- Tween shorthand
-local function T(obj, props, t, style, dir)
-	return TweenService:Create(obj,
-		TweenInfo.new(t or .2, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out),
-		props)
-end
-
--- Instance shorthand
-local function N(cls, parent, props)
-	local i = Instance.new(cls)
-	if parent then i.Parent = parent end
-	for k, v in pairs(props or {}) do i[k] = v end
-	return i
-end
-
-local function corner(p, r) N("UICorner", p, {CornerRadius = UDim.new(0, r or 7)}) end
-local function stroke(p, col, thick, tr)
-	N("UIStroke", p, {Color=col or D.BD, Thickness=thick or 1, Transparency=tr or 0})
-end
-local function padI(p, l, r, t, b)
-	N("UIPadding", p, {
-		PaddingLeft  =UDim.new(0,l or 0), PaddingRight =UDim.new(0,r or 0),
-		PaddingTop   =UDim.new(0,t or 0), PaddingBottom=UDim.new(0,b or 0),
-	})
-end
-local function vList(p, gap)
-	N("UIListLayout", p, {Padding=UDim.new(0,gap or 0), SortOrder=Enum.SortOrder.LayoutOrder})
-end
-local function hList(p, gap)
-	N("UIListLayout", p, {
-		Padding=UDim.new(0,gap or 0),
-		FillDirection=Enum.FillDirection.Horizontal,
-		SortOrder=Enum.SortOrder.LayoutOrder,
-	})
-end
-
--- ┌─────────────────────────────────────┐
--- │  UILib.new(config)                  │
--- └─────────────────────────────────────┘
+--=============================================
+-- FUNGSI UTAMA: Buat Window
+--=============================================
 function UILib.new(config)
 	local self = setmetatable({}, UILib)
 
-	-- ── public state (same names as original) ──────────────────
-	self.Title           = config.Title or "My Hub"
-	self.Tabs            = {}
-	self.TabButtons      = {}
-	self.TabPages        = {}
-	self.ActiveTab       = nil
+	self.Title = config.Title or "Hub"
+	self.Tabs = {}
+	self.TabButtons = {}
+	self.TabPages = {}
+	self.ActiveTab = nil
 	self.UpdateCallbacks = {}
-	self.IsMobile        = isMobile()
-	self.Scale           = getScale()
-	self.StatusLabels    = {}
-	self._resizing       = false
-	self._minimized      = false
+	self.IsMobile = isMobile()
+	self.Scale = getScale()
 
-	-- ── responsive size (same logic as original) ───────────────
+	-- Responsive size setup
 	local screen = getScreenSize()
 	if config.Size then
 		self.Size = config.Size
-	elseif self.IsMobile then
-		self.Size = UDim2.new(0, math.min(screen.X-16, 420), 0, math.min(screen.Y-60, 310))
 	else
-		self.Size = UDim2.new(0, 490, 0, 295)
+		if self.IsMobile then
+			local w = math.min(screen.X - 20, 420)
+			local h = math.min(screen.Y - 60, 340)
+			self.Size = UDim2.new(0, w, 0, h)
+		else
+			self.Size = UDim2.new(0, 750, 0, 500) -- Slightly wider than before
+		end
 	end
 
-	-- ── layout metrics (compact, same names as original) ───────
+	-- Layout dimensions based on mobile/desktop
 	if self.IsMobile then
-		self.SidebarWidth      = 108
-		self.TitleBarHeight    = 38
-		self.FontTitle         = 11
-		self.FontTab           = 10
-		self.FontElement       = 10
-		self.FontSmall         = 8
-		self.ElementHeight     = 28
-		self.SectionPadding    = 7
-		self.TabButtonHeight   = 28
-		self.TabButtonSpacing  = 32
+		self.SidebarWidth = 100
+		self.TitleBarHeight = 40
+		self.FontTitle = 14
+		self.FontTab = 12
+		self.FontElement = 12
+		self.FontSmall = 9
+		self.ElementHeight = 32
+		self.SectionPadding = 8
+		self.TabButtonHeight = 34
+		self.TabButtonSpacing = 42
 	else
-		self.SidebarWidth      = 130
-		self.TitleBarHeight    = 44
-		self.FontTitle         = 13
-		self.FontTab           = 11
-		self.FontElement       = 11
-		self.FontSmall         = 9
-		self.ElementHeight     = 32
-		self.SectionPadding    = 9
-		self.TabButtonHeight   = 30
-		self.TabButtonSpacing  = 34
+		self.SidebarWidth = 180
+		self.TitleBarHeight = 52
+		self.FontTitle = 18
+		self.FontTab = 13
+		self.FontElement = 13
+		self.FontSmall = 11
+		self.ElementHeight = 42
+		self.SectionPadding = 16
+		self.TabButtonHeight = 40
+		self.TabButtonSpacing = 50
 	end
 
-	-- TopBarH kept as 0 — replaced by subtle inner glow (no animated bar)
-	self.TopBarH    = 0
+	-- Top bar offset (animated bar height)
+	self.TopBarH = 3
 	self.HeaderTotal = self.TopBarH + self.TitleBarHeight
 
-	-- ── destroy old ────────────────────────────────────────────
-	local old = game.CoreGui:FindFirstChild("UILib_Main")
-	if old then old:Destroy() end
+	-- State flags
+	self._resizing = false
+	self._minimized = false
+	self._dragging = false
 
-	-- ── ScreenGui ──────────────────────────────────────────────
-	self.ScreenGui = N("ScreenGui", game.CoreGui, {
-		Name           = "UILib_Main",
-		ResetOnSpawn   = false,
-		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-	})
+	-- Hapus GUI lama
+	local oldGui = game.CoreGui:FindFirstChild("Modern_UI_Library")
+	if oldGui then oldGui:Destroy() end
 
-	-- ── Drop shadow ────────────────────────────────────────────
-	self.Shadow = N("ImageLabel", self.ScreenGui, {
-		AnchorPoint          = Vector2.new(.5,.5),
-		BackgroundTransparency = 1,
-		Position             = UDim2.new(.5,0,.5,0),
-		Size                 = self.Size + UDim2.new(0,44,0,44),
-		Image                = "rbxassetid://5554236805",
-		ImageColor3          = D.BG0,
-		ImageTransparency    = 0.44,
-		ScaleType            = Enum.ScaleType.Slice,
-		SliceCenter          = Rect.new(23,23,277,277),
-	})
+	-- ScreenGui
+	self.ScreenGui = Instance.new("ScreenGui")
+	self.ScreenGui.Name = "Modern_UI_Library"
+	self.ScreenGui.Parent = game.CoreGui
+	self.ScreenGui.ResetOnSpawn = false
+	self.ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
-	-- ── Main frame ─────────────────────────────────────────────
-	self.Main = N("Frame", self.ScreenGui, {
-		Name               = "Main",
-		AnchorPoint        = Vector2.new(.5,.5),
-		BackgroundColor3   = D.BG1,
-		BorderSizePixel    = 0,
-		Position           = UDim2.new(.5,0,.5,0),
-		Size               = self.Size,
-		ClipsDescendants   = true,
-	})
-	corner(self.Main, self.IsMobile and 11 or 13)
-	stroke(self.Main, D.BDL, 1, 0.42)
+	-- Shadow (Blur + Scale)
+	self.Shadow = Instance.new("ImageLabel", self.ScreenGui)
+	self.Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.Shadow.BackgroundTransparency = 1
+	self.Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+	self.Shadow.Size = self.Size + UDim2.new(0, 30, 0, 30)
+	self.Shadow.Image = "rbxassetid://5554236805"
+	self.Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+	self.Shadow.ImageTransparency = 0.5
+	self.Shadow.ScaleType = Enum.ScaleType.Slice
+	self.Shadow.SliceCenter = Rect.new(23, 23, 277, 277)
+	
+	-- Glow Effect via Blur
+	local blur = Instance.new("DropShadowEffect", self.ScreenGui)
+	blur.Color = Color3.fromRGB(0, 0, 0)
+	blur.Offset = UDim2.new(0, 5, 0, 5)
+	blur.Size = 20
+	blur.Transparency = 0.6
+	blur.Visible = false -- Set visible via toggle
 
-	-- Subtle inner luminance (replaces animated rainbow bar — cleaner)
-	local glow = N("Frame", self.Main, {
-		BackgroundColor3      = Color3.new(1,1,1),
-		BackgroundTransparency = 0.965,
-		BorderSizePixel       = 0,
-		Size                  = UDim2.new(1,0,.42,0),
-	})
-	N("UIGradient", glow, {
-		Color    = ColorSequence.new{
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(120,100,255)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(0,160,255)),
-		},
-		Rotation = 132,
-	})
+	-- Main Frame
+	self.Main = Instance.new("Frame", self.ScreenGui)
+	self.Main.Name = "Main"
+	self.Main.AnchorPoint = Vector2.new(0.5, 0.5)
+	self.Main.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+	self.Main.BorderSizePixel = 0
+	self.Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+	self.Main.Size = self.Size
+	self.Main.ClipsDescendants = true
+	Instance.new("UICorner", self.Main).CornerRadius = UDim.new(0, 12)
 
-	-- ── build pieces ───────────────────────────────────────────
+	-- Main Border Stroke
+	local stroke = Instance.new("UIStroke", self.Main)
+	stroke.Color = Color3.fromRGB(25, 25, 35)
+	stroke.Thickness = 1.5
+	stroke.Transparency = 0.8
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+	-- ==========================================
+	-- DRAG & RESIZE SYSTEMS
+	-- ==========================================
 	self:_setupDrag()
-	self:_createAnimatedBar()   -- preserved for compat (now no-op/invisible)
+	self:_setupResize()
+	
+	-- ==========================================
+	-- INTERNAL LAYOUT (Bars & Sidebar)
+	-- ==========================================
+	self:_createAnimatedBar()
 	self:_createTitleBar()
 	self:_createSidebar()
-
+	
 	-- Content Area
-	self.ContentArea = N("Frame", self.Main, {
-		BackgroundColor3 = D.BG1,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0, self.SidebarWidth, 0, self.HeaderTotal),
-		Size     = UDim2.new(1,-self.SidebarWidth,1,-self.HeaderTotal),
-	})
+	self.ContentArea = Instance.new("Frame", self.Main)
+	self.ContentArea.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+	self.ContentArea.BorderSizePixel = 0
+	self.ContentArea.Position = UDim2.new(0, self.SidebarWidth, 0, self.HeaderTotal)
+	self.ContentArea.Size = UDim2.new(1, -self.SidebarWidth, 1, -self.HeaderTotal)
 
+	-- Notification Bar
 	self:_createNotifyBar()
-	self:_createStatusArea()
-	self:_setupResize()
+
+	-- Status Labels (Desktop Only)
+	self.StatusLabels = {}
+	if not self.IsMobile then
+		self:_createStatusArea()
+	end
+
+	-- Anti-AFK System (Always Active)
 	self:_startAntiAFK()
 
-	-- ── open animation ─────────────────────────────────────────
-	self.Main.Size               = UDim2.new(0,0,0,0)
-	self.Main.BackgroundTransparency = 1
+	-- Open animation
+	self.Main.Size = UDim2.new(0, 0, 0, 0)
 	self.Shadow.ImageTransparency = 1
-	T(self.Main, {Size=self.Size, BackgroundTransparency=0}, .48, Enum.EasingStyle.Back):Play()
-	T(self.Shadow, {ImageTransparency=0.44}, .48):Play()
+	blur.Enabled = false
+	TweenService:Create(self.Main, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = self.Size
+	}):Play()
+	TweenService:Create(self.Shadow, TweenInfo.new(0.5), {
+		ImageTransparency = 0.5
+	}):Play()
+	task.wait(0.55)
+	blur.Enabled = true
 
+	-- Start update loop
 	self:_startUpdateLoop()
+
 	return self
 end
 
--- ┌─────────────────────────────────────┐
--- │  ANIMATED BAR  (compat stub)        │
--- └─────────────────────────────────────┘
--- Original called this — we keep the name so any patched scripts don't break.
--- The visual is replaced by the inner glow above (cleaner look).
-function UILib:_createAnimatedBar()
-	-- intentionally empty — visual handled by glow frame in constructor
-end
-
--- ┌─────────────────────────────────────┐
--- │  ANTI-AFK  (identical logic)        │
--- └─────────────────────────────────────┘
-function UILib:_startAntiAFK()
-	local player = Players.LocalPlayer
-	if player then
-		self._antiAfkIdleConnection = player.Idled:Connect(function()
-			pcall(function()
-				VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.Space, false, game)
-				task.wait(0.1)
-				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
-			end)
-		end)
-	end
-	self._antiAfkActive = true
-	task.spawn(function()
-		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
-			task.wait(60)
-			if not self._antiAfkActive then break end
-			pcall(function()
-				VirtualInputManager:SendKeyEvent(true,  Enum.KeyCode.F13, false, game)
-				task.wait(0.1)
-				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F13, false, game)
-			end)
-		end
-	end)
-	task.spawn(function()
-		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
-			task.wait(120)
-			if not self._antiAfkActive then break end
-			pcall(function()
-				VirtualInputManager:SendMouseMoveEvent(math.random(100,500), math.random(100,500), game)
-			end)
-		end
-	end)
-	self:_createAntiAfkIndicator()
-end
-
-function UILib:_createAntiAfkIndicator()
-	-- Built inline inside _createTitleBar; this just starts the blink loop.
-	task.spawn(function()
-		local dot = self._antiAfkDot
-		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
-			if dot and dot.Parent then
-				T(dot, {BackgroundTransparency=0.78}, .85, Enum.EasingStyle.Sine):Play()
-				task.wait(.85)
-				T(dot, {BackgroundTransparency=0},    .85, Enum.EasingStyle.Sine):Play()
-				task.wait(.85)
-			else break end
-		end
-	end)
-end
-
--- ┌─────────────────────────────────────┐
--- │  DRAG  (same logic)                 │
--- └─────────────────────────────────────┘
+--=============================================
+-- INTERNAL: Drag System [ENHANCED]
+--=============================================
 function UILib:_setupDrag()
 	local dragging, dragInput, dragStart, startPos
-
+	
 	self.Main.InputBegan:Connect(function(input)
-		if self._resizing then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
+		if self._resizing or self._minimized then return end
+		
+		if input.UserInputType == Enum.UserInputType.MouseButton1 
 		or input.UserInputType == Enum.UserInputType.Touch then
-			dragging  = true
+			dragging = true
 			dragStart = input.Position
-			startPos  = self.Main.Position
+			startPos = self.Main.Position
+			
 			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
 			end)
 		end
 	end)
 
 	self.Main.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement
+		if input.UserInputType == Enum.UserInputType.MouseMovement 
 		or input.UserInputType == Enum.UserInputType.Touch then
 			dragInput = input
 		end
 	end)
 
 	UserInputService.InputChanged:Connect(function(input)
-		if input == dragInput and dragging and not self._resizing then
-			local d = input.Position - dragStart
-			local p = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X,
-			                    startPos.Y.Scale, startPos.Y.Offset+d.Y)
-			self.Main.Position   = p
-			self.Shadow.Position = p
+		if input == dragInput and dragging and not self._resizing and not self._minimized then
+			local delta = input.Position - dragStart
+			local newPos = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y
+			)
+			
+			self.Main.Position = newPos
+			self.Shadow.Position = newPos
 		end
 	end)
 end
 
--- ┌─────────────────────────────────────┐
--- │  RESIZE  (same logic, better dots)  │
--- └─────────────────────────────────────┘
+--=============================================
+-- INTERNAL: Resize System [RAYFIELD STYLE IMPROVEMENT]
+--=============================================
 function UILib:_setupResize()
-	local hs  = self.IsMobile and 22 or 20
-	local ds  = 2
-	local dg  = 4
-	local scr = getScreenSize()
-	local minW = self.SidebarWidth + (self.IsMobile and 100 or 180)
-	local minH = self.HeaderTotal  + (self.IsMobile and 80  or 120)
-	local maxW = math.min(scr.X-10, 1400)
-	local maxH = math.min(scr.Y-20, 1000)
+	local handleSize = self.IsMobile and 30 or 24
+	local dotSize = self.IsMobile and 3 or 4
+	local dotGap = self.IsMobile and 5 or 6
 
-	local handle = N("Frame", self.Main, {
-		Name                 = "ResizeHandle",
-		BackgroundTransparency = 1,
-		Position = UDim2.new(1,-hs,1,-hs),
-		Size     = UDim2.new(0,hs,0,hs),
-		ZIndex   = 10,
-	})
+	-- Limits
+	local minW = self.SidebarWidth + (self.IsMobile and 100 or 200)
+	local minH = self.HeaderTotal + (self.IsMobile and 80 or 120)
+	local screen = getScreenSize()
+	local maxW = math.min(screen.X - 10, 1400)
+	local maxH = math.min(screen.Y - 20, 1000)
 
-	local dots = {}
-	for row=0,2 do for col=0,2-row do
-		local d = N("Frame", handle, {
-			BackgroundColor3     = D.BDL,
-			BackgroundTransparency = 0.25,
-			BorderSizePixel      = 0,
-			Size = UDim2.new(0,ds,0,ds),
-			AnchorPoint = Vector2.new(1,1),
-			Position = UDim2.new(1,-(2+col*(ds+dg)), 1,-(2+row*(ds+dg))),
-			ZIndex = 10,
-		})
-		corner(d, 99)
-		dots[#dots+1] = d
-	end end
+	-- Handle frame di pojok kanan bawah
+	local handle = Instance.new("Frame", self.Main)
+	handle.Name = "ResizeHandle"
+	handle.BackgroundTransparency = 1
+	handle.Position = UDim2.new(1, -handleSize, 1, -handleSize)
+	handle.Size = UDim2.new(0, handleSize, 0, handleSize)
+	handle.ZIndex = 10
+	handle.LayoutOrder = 999 -- Penuhkan dulu biar ga geser saat animasi
 
-	local hp  = self.IsMobile and 10 or 6
-	local btn = N("TextButton", handle, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,-hp,0,-hp),
-		Size     = UDim2.new(1,hp*2,1,hp*2),
-		Text     = "", ZIndex = 11,
-		AutoButtonColor = false,
-	})
+	-- Draw Grip Dots
+	local gripDots = {}
+	for row = 0, 2 do
+		for col = 0, 2 - row do
+			local dot = Instance.new("Frame", handle)
+			dot.Name = "GripDot"
+			dot.BackgroundColor3 = Color3.fromRGB(100, 100, 110)
+			dot.BackgroundTransparency = 0.4
+			dot.BorderSizePixel = 0
+			dot.Size = UDim2.new(0, dotSize, 0, dotSize)
+			dot.Position = UDim2.new(
+				1, -(3 + col * (dotSize + dotGap)),
+				1, -(3 + row * (dotSize + dotGap))
+			)
+			dot.AnchorPoint = Vector2.new(1, 1)
+			dot.ZIndex = 10
+			Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+			table.insert(gripDots, dot)
+		end
+	end
+
+	-- Hit Detection Button (Hidden)
+	local hitPad = self.IsMobile and 12 or 6
+	local btn = Instance.new("TextButton", handle)
+	btn.Name = "ResizeBtn"
+	btn.BackgroundTransparency = 1
+	btn.Position = UDim2.new(0, -hitPad, 0, -hitPad)
+	btn.Size = UDim2.new(1, hitPad * 2, 1, hitPad * 2)
+	btn.Text = ""
+	btn.ZIndex = 11
+	btn.Active = true
+	btn.AutoButtonColor = false
 
 	local resizing = false
 	local resizeStart, startSize, startPos
+	local originalColors = {}
 
-	local function dotStyle(col, tr)
-		for _,d in ipairs(dots) do
+	for _, d in ipairs(gripDots) do
+		originalColors[d] = d.BackgroundColor3
+	end
+
+	-- Fungsi helper warna dots
+	local function setDotHighlight(isActive)
+		for _, d in ipairs(gripDots) do
 			if d and d.Parent then
-				T(d, {BackgroundColor3=col, BackgroundTransparency=tr}, .15):Play()
+				TweenService:Create(d, TweenInfo.new(0.2), {
+					BackgroundColor3 = isActive and Color3.fromRGB(180, 200, 255) or originalColors[d],
+					BackgroundTransparency = isActive and 0.1 or 0.4
+				}):Play()
 			end
 		end
 	end
 
+	-- Mulai Resize Logic
 	btn.InputBegan:Connect(function(input)
 		if self._minimized then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
+		if input.UserInputType == Enum.UserInputType.MouseButton1 
 		or input.UserInputType == Enum.UserInputType.Touch then
-			resizing = true; self._resizing = true
+			resizing = true
+			self._resizing = true
 			resizeStart = input.Position
-			startSize   = Vector2.new(self.Main.Size.X.Offset, self.Main.Size.Y.Offset)
-			startPos    = self.Main.Position
-			dotStyle(D.ACX, 0)
+			startSize = Vector2.new(self.Main.Size.X.Offset, self.Main.Size.Y.Offset)
+			startPos = self.Main.Position
+			setDotHighlight(true)
+
 			input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then
-					resizing = false; self._resizing = false
-					dotStyle(D.BDL, 0.25)
+					resizing = false
+					self._resizing = false
+					setDotHighlight(false)
 				end
 			end)
 		end
 	end)
-	btn.MouseEnter:Connect(function() if not resizing then dotStyle(D.ACL, 0) end end)
-	btn.MouseLeave:Connect(function() if not resizing then dotStyle(D.BDL, 0.25) end end)
 
+	-- Hover / Leave effect untuk desktop
+	btn.MouseEnter:Connect(function()
+		if not resizing then setDotHighlight(true) end
+	end)
+	btn.MouseLeave:Connect(function()
+		if not resizing then setDotHighlight(false) end
+	end)
+
+	-- Input Changed untuk Update Size
 	UserInputService.InputChanged:Connect(function(input)
-		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement 
 		or input.UserInputType == Enum.UserInputType.Touch) then
+			
 			local delta = input.Position - resizeStart
-			local nw    = math.clamp(startSize.X+delta.X, minW, maxW)
-			local nh    = math.clamp(startSize.Y+delta.Y, minH, maxH)
-			local dw, dh = nw-startSize.X, nh-startSize.Y
-			local ns    = UDim2.new(0,nw,0,nh)
-			local np    = UDim2.new(startPos.X.Scale, startPos.X.Offset+dw/2,
-			                        startPos.Y.Scale, startPos.Y.Offset+dh/2)
-			self.Main.Size     = ns
-			self.Main.Position = np
-			self.Size          = ns   -- so minimize restores correctly
-			self.Shadow.Size   = ns + UDim2.new(0,44,0,44)
-			self.Shadow.Position = np
+			local newW = math.clamp(startSize.X + delta.X, minW, maxW)
+			local newH = math.clamp(startSize.Y + delta.Y, minH, maxH)
+
+			-- Kompensasi Anchor Point 0.5 agar tetap center
+			local deltaW = newW - startSize.X
+			local deltaH = newH - startSize.Y
+
+			local newSize = UDim2.new(0, newW, 0, newH)
+			local newPos = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + deltaW / 2,
+				startPos.Y.Scale, startPos.Y.Offset + deltaH / 2
+			)
+
+			self.Main.Size = newSize
+			self.Shadow.Size = newSize + UDim2.new(0, 30, 0, 30)
+			self.Shadow.Position = newPos
+			
+			-- Update local ref size
+			self.Size = newSize
 		end
 	end)
 
 	self.ResizeHandle = handle
 end
 
--- ┌─────────────────────────────────────┐
--- │  TITLE BAR  (premium macOS-style)   │
--- └─────────────────────────────────────┘
-function UILib:_createTitleBar()
-	self.TitleBar = N("Frame", self.Main, {
-		BackgroundColor3 = D.BG2,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,0,0,self.TopBarH),
-		Size     = UDim2.new(1,0,0,self.TitleBarHeight),
-	})
-	-- Bottom separator line
-	N("Frame", self.TitleBar, {
-		BackgroundColor3 = D.BD,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,0,1,-1),
-		Size     = UDim2.new(1,0,0,1),
-	})
+--=============================================
+-- INTERNAL: Animated Rainbow Bar
+--=============================================
+function UILib:_createAnimatedBar()
+	local bar = Instance.new("Frame", self.Main)
+	bar.BackgroundColor3 = Color3.new(1, 1, 1)
+	bar.BorderSizePixel = 0
+	bar.Size = UDim2.new(1, 0, 0, self.TopBarH)
 
-	-- ── Accent pulse dot ───────────────────────────────────────
-	local adot = N("Frame", self.TitleBar, {
-		BackgroundColor3 = D.ACC,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,11,.5,-4),
-		Size     = UDim2.new(0,7,0,7),
-	})
-	corner(adot, 99)
+	local gradient = Instance.new("UIGradient", bar)
+	gradient.Rotation = 90
+	gradient.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 0.3)
+	}
+
+	local colors = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(80, 120, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(160, 100, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 100, 180))
+	}
+	gradient.Color = colors
+
+	-- Animasi Loop Gradient
 	task.spawn(function()
 		while self.ScreenGui and self.ScreenGui.Parent do
-			T(adot, {BackgroundColor3=D.ACX}, 1.4, Enum.EasingStyle.Sine):Play(); task.wait(1.4)
-			T(adot, {BackgroundColor3=D.ACC}, 1.4, Enum.EasingStyle.Sine):Play(); task.wait(1.4)
+			for i = 0, 1, 0.01 do
+				if not self.ScreenGui.Parent then return end
+				gradient.Offset = Vector2.new(i, 0)
+				task.wait(0.05)
+			end
+			for i = 1, 0, -0.01 do
+				if not self.ScreenGui.Parent then return end
+				gradient.Offset = Vector2.new(i, 0)
+				task.wait(0.05)
+			end
 		end
 	end)
+end
 
-	-- ── Title label ────────────────────────────────────────────
-	N("TextLabel", self.TitleBar, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,25,0,0),
-		Size     = UDim2.new(0, self.IsMobile and 155 or 210, 1, 0),
-		Font     = D.FB,
-		Text     = self.Title,
-		TextColor3 = D.T0,
-		TextSize   = self.FontTitle,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate   = Enum.TextTruncate.AtEnd,
-	})
+--=============================================
+-- INTERNAL: Title Bar + Controls
+--=============================================
+function UILib:_createTitleBar()
+	self.TitleBar = Instance.new("Frame", self.Main)
+	self.TitleBar.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+	self.TitleBar.BorderSizePixel = 0
+	self.TitleBar.Position = UDim2.new(0, 0, 0, self.TopBarH)
+	self.TitleBar.Size = UDim2.new(1, 0, 0, self.TitleBarHeight)
 
-	-- ── AFK badge ──────────────────────────────────────────────
-	local afkX = self.IsMobile and -88 or -114
-	local afkF = N("Frame", self.TitleBar, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(1,afkX,.5,-7),
-		Size     = UDim2.new(0,36,0,14),
-	})
-	local afkDot = N("Frame", afkF, {
-		BackgroundColor3 = D.GRN,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,0,.5,-4),
-		Size     = UDim2.new(0,8,0,8),
-	})
-	corner(afkDot, 99)
-	N("TextLabel", afkF, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,12,0,0),
-		Size     = UDim2.new(0,24,1,0),
-		Font     = D.FSB,
-		Text     = "AFK",
-		TextColor3 = D.GRN,
-		TextSize   = self.FontSmall,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	self._antiAfkDot = afkDot
+	local titleLabel = Instance.new("TextLabel", self.TitleBar)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Position = UDim2.new(0, 12, 0, 0)
+	titleLabel.Size = UDim2.new(0, self.IsMobile and 140 or 250, 1, 0)
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.Text = self.Title
+	titleLabel.TextColor3 = Color3.fromRGB(220, 220, 240)
+	titleLabel.TextSize = self.FontTitle
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-	-- ── macOS window controls ──────────────────────────────────
-	local cS  = self.IsMobile and 16 or 18
-	local gap = cS + 5
+	local btnSize = self.IsMobile and 26 or 32
+	local btnFont = self.IsMobile and 12 or 14
+	local btnGap = btnSize + 5
 
-	local function mkCtrl(col, xOff, sym)
-		local b = N("TextButton", self.TitleBar, {
-			BackgroundColor3 = col,
-			BorderSizePixel  = 0,
-			Position = UDim2.new(1,xOff,.5,-cS/2),
-			Size     = UDim2.new(0,cS,0,cS),
-			Text     = "",
-			AutoButtonColor = false,
-		})
-		corner(b, 99)
-		stroke(b, col:Lerp(D.BG0, 0.45), 1, 0)
-		local ico = N("TextLabel", b, {
-			BackgroundTransparency = 1,
-			Size     = UDim2.new(1,0,1,0),
-			Font     = D.FB,
-			Text     = sym,
-			TextColor3 = col:Lerp(D.BG0, 0.5),
-			TextSize   = cS-4,
-			TextTransparency = 1,
-		})
-		b.MouseEnter:Connect(function()
-			T(b,   {BackgroundColor3 = col:Lerp(Color3.new(1,1,1),.14)}, .12):Play()
-			T(ico, {TextTransparency = 0}, .12):Play()
-		end)
-		b.MouseLeave:Connect(function()
-			T(b,   {BackgroundColor3 = col}, .12):Play()
-			T(ico, {TextTransparency = 1}, .12):Play()
-		end)
-		return b
-	end
+	-- Close Button
+	local closeBtn = Instance.new("TextButton", self.TitleBar)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+	closeBtn.BackgroundTransparency = 0.8
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Position = UDim2.new(1, -(btnSize + 8), 0.5, -btnSize/2)
+	closeBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.Text = "✕"
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.TextSize = btnFont
+	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 
-	-- Close (red)
-	local closeBtn = mkCtrl(D.RED, -(cS+8), "×")
+	closeBtn.MouseEnter:Connect(function()
+		TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+			BackgroundTransparency = 0
+		}):Play()
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+			BackgroundTransparency = 0.8
+		}):Play()
+	end)
 	closeBtn.MouseButton1Click:Connect(function()
 		self.ScreenGui.Enabled = false
 	end)
 
-	-- Minimize (yellow)
-	local minBtn = mkCtrl(D.YLW, -(cS+8+gap), "−")
+	-- Minimize Button
+	local minBtn = Instance.new("TextButton", self.TitleBar)
+	minBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 60)
+	minBtn.BackgroundTransparency = 0.8
+	minBtn.BorderSizePixel = 0
+	minBtn.Position = UDim2.new(1, -(btnSize + 8 + btnGap), 0.5, -btnSize/2)
+	minBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
+	minBtn.Font = Enum.Font.GothamBold
+	minBtn.Text = "—"
+	minBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	minBtn.TextSize = btnFont
+	Instance.new("UICorner", minBtn).CornerRadius = UDim.new(0, 8)
+
+	minBtn.MouseEnter:Connect(function()
+		TweenService:Create(minBtn, TweenInfo.new(0.2), {
+			BackgroundTransparency = 0
+		}):Play()
+	end)
+	minBtn.MouseLeave:Connect(function()
+		TweenService:Create(minBtn, TweenInfo.new(0.2), {
+			BackgroundTransparency = 0.8
+		}):Play()
+	end)
 	minBtn.MouseButton1Click:Connect(function()
 		self._minimized = not self._minimized
 		if self._minimized then
-			T(self.Main,   {Size=UDim2.new(0,self.Size.X.Offset,0,self.TitleBarHeight)}, .3, Enum.EasingStyle.Quart):Play()
-			T(self.Shadow, {Size=UDim2.new(0,self.Size.X.Offset+44,0,self.TitleBarHeight+44)}, .3):Play()
+			TweenService:Create(self.Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+				Size = UDim2.new(0, self.Size.X.Offset, 0, self.HeaderTotal)
+			}):Play()
+			TweenService:Create(self.Shadow, TweenInfo.new(0.3), {
+				Size = UDim2.new(0, self.Size.X.Offset + 30, 0, self.HeaderTotal + 30)
+			}):Play()
 			if self.ResizeHandle then self.ResizeHandle.Visible = false end
 		else
-			T(self.Main,   {Size=self.Size}, .3, Enum.EasingStyle.Back):Play()
-			T(self.Shadow, {Size=self.Size+UDim2.new(0,44,0,44)}, .3):Play()
+			TweenService:Create(self.Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+				Size = self.Size
+			}):Play()
+			TweenService:Create(self.Shadow, TweenInfo.new(0.3), {
+				Size = self.Size + UDim2.new(0, 30, 0, 30)
+			}):Play()
 			if self.ResizeHandle then self.ResizeHandle.Visible = true end
 		end
 	end)
 end
 
--- ┌─────────────────────────────────────┐
--- │  STATUS AREA  (same public API)     │
--- └─────────────────────────────────────┘
+--=============================================
+-- INTERNAL: Status Area
+--=============================================
 function UILib:_createStatusArea()
 	if self.IsMobile then return end
-	local sf = N("Frame", self.TitleBar, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,230,0,0),
-		Size     = UDim2.new(0,180,1,0),
-	})
-	for i=1,3 do
-		self.StatusLabels[i] = N("TextLabel", sf, {
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0,0,0,3+(i-1)*14),
-			Size     = UDim2.new(1,0,0,14),
-			Font     = D.FSB,
-			TextSize = 9,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = D.T2,
-			Text = "",
-		})
+
+	local statusFrame = Instance.new("Frame", self.TitleBar)
+	statusFrame.BackgroundTransparency = 1
+	statusFrame.Position = UDim2.new(0, 260, 0, 0)
+	statusFrame.Size = UDim2.new(0, 200, 1, 0)
+
+	for i = 1, 3 do
+		local label = Instance.new("TextLabel", statusFrame)
+		label.BackgroundTransparency = 1
+		label.Position = UDim2.new(0, 0, 0, 3 + (i-1) * 15)
+		label.Size = UDim2.new(1, 0, 0, 15)
+		label.Font = Enum.Font.GothamSemibold
+		label.TextSize = 10
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextColor3 = Color3.fromRGB(180, 180, 200)
+		label.Text = ""
+		self.StatusLabels[i] = label
 	end
 end
 
+--=============================================
+-- PUBLIC: Update Status Lines
+--=============================================
 function UILib:SetStatus(line, text, color)
 	if self.StatusLabels[line] then
 		self.StatusLabels[line].Text = text
-		if color then self.StatusLabels[line].TextColor3 = color end
+		if color then
+			self.StatusLabels[line].TextColor3 = color
+		end
 	end
 end
 
--- ┌─────────────────────────────────────┐
--- │  SIDEBAR  (same structure, new look)│
--- └─────────────────────────────────────┘
+--=============================================
+-- INTERNAL: Sidebar
+--=============================================
 function UILib:_createSidebar()
-	self.Sidebar = N("ScrollingFrame", self.Main, {
-		BackgroundColor3    = D.BG2,
-		BorderSizePixel     = 0,
-		Position = UDim2.new(0,0,0,self.HeaderTotal),
-		Size     = UDim2.new(0,self.SidebarWidth,1,-self.HeaderTotal),
-		ScrollBarThickness  = 2,
-		ScrollBarImageColor3 = D.BDL,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		CanvasSize          = UDim2.new(0,0,0,0),
-	})
-	-- Right border
-	N("Frame", self.Sidebar, {
-		BackgroundColor3 = D.BD,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(1,-1,0,0),
-		Size     = UDim2.new(0,1,1,0),
-	})
-	-- "NAVIGATION" micro-label
-	N("TextLabel", self.Sidebar, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,9,0,10),
-		Size     = UDim2.new(1,-9,0,10),
-		Font     = D.FSB,
-		Text     = "NAVIGATION",
-		TextColor3 = D.T3,
-		TextSize   = 7,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
+	self.Sidebar = Instance.new("ScrollingFrame", self.Main)
+	self.Sidebar.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+	self.Sidebar.BorderSizePixel = 0
+	self.Sidebar.Position = UDim2.new(0, 0, 0, self.HeaderTotal)
+	self.Sidebar.Size = UDim2.new(0, self.SidebarWidth, 1, -self.HeaderTotal)
+	self.Sidebar.ScrollBarThickness = 2
+	self.Sidebar.ScrollBarImageColor3 = Color3.fromRGB(50, 60, 80)
+	self.Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	self.Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
+
+	local line = Instance.new("Frame", self.Sidebar)
+	line.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+	line.BorderSizePixel = 0
+	line.Position = UDim2.new(1, -1, 0, 0)
+	line.Size = UDim2.new(0, 1, 1, 0)
+
 	self._tabIndex = 0
 end
 
--- ┌─────────────────────────────────────┐
--- │  NOTIFY BAR  (same public API)      │
--- └─────────────────────────────────────┘
+--=============================================
+-- INTERNAL: Notification Bar
+--=============================================
 function UILib:_createNotifyBar()
-	local margin = self.IsMobile and 5 or 8
-	local h = self.IsMobile and 19 or 23
+	local margin = self.IsMobile and 5 or 10
+	self.NotifyBar = Instance.new("TextLabel", self.Main)
+	self.NotifyBar.BackgroundTransparency = 1
+	self.NotifyBar.Position = UDim2.new(0, self.SidebarWidth + margin, 1, self.IsMobile and -22 or -30)
+	self.NotifyBar.Size = UDim2.new(1, -(self.SidebarWidth + margin + 5), 0, self.IsMobile and 18 or 25)
+	self.NotifyBar.Font = Enum.Font.GothamSemibold
+	self.NotifyBar.Text = ""
+	self.NotifyBar.TextColor3 = Color3.fromRGB(150, 255, 180)
+	self.NotifyBar.TextSize = self.IsMobile and 9 or 11
+	self.NotifyBar.TextXAlignment = Enum.TextXAlignment.Left
+	self.NotifyBar.TextTransparency = 1
+	self.NotifyBar.TextTruncate = Enum.TextTruncate.AtEnd
+	Instance.new("UICorner", self.NotifyBar).CornerRadius = UDim.new(0, 6)
 
-	self._notifyFrame = N("Frame", self.Main, {
-		BackgroundColor3   = Color3.fromRGB(14,22,50),
-		BackgroundTransparency = 1,
-		BorderSizePixel    = 0,
-		Position = UDim2.new(0, self.SidebarWidth+margin, 1, -(h+7)),
-		Size     = UDim2.new(1, -(self.SidebarWidth+margin*2), 0, h),
-		ClipsDescendants   = true,
-	})
-	corner(self._notifyFrame, 6)
-
-	self.NotifyBar = N("TextLabel", self._notifyFrame, {
-		BackgroundTransparency = 1,
-		Size    = UDim2.new(1,0,1,0),
-		Font    = D.FSB,
-		Text    = "",
-		TextColor3 = D.T0,
-		TextSize   = self.FontSmall + 1,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTransparency = 1,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	padI(self.NotifyBar, 10)
 	self._notifyDebounce = false
 end
 
+--=============================================
+-- PUBLIC: Show Notification
+--=============================================
 function UILib:Notify(msg, color)
 	if self._notifyDebounce then return end
 	self._notifyDebounce = true
 
-	local col = color or D.GRN
-	self.NotifyBar.Text            = "  " .. msg
-	self.NotifyBar.TextColor3      = col
+	self.NotifyBar.Text = "  " .. msg
+	self.NotifyBar.TextColor3 = color or Color3.fromRGB(150, 255, 180)
 	self.NotifyBar.TextTransparency = 0
-	T(self._notifyFrame, {BackgroundTransparency=0.1}, .18):Play()
+	self.NotifyBar.BackgroundTransparency = 0.5 -- Add bg for visibility if needed
 
-	-- Left accent line
-	local line = N("Frame", self._notifyFrame, {
-		BackgroundColor3 = col,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,0,0,0),
-		Size     = UDim2.new(0,2,1,0),
-	})
-	corner(line, 99)
-
-	task.delay(2, function()
-		T(self._notifyFrame, {BackgroundTransparency=1}, .35):Play()
-		T(self.NotifyBar,    {TextTransparency=1},       .35):Play()
-		task.delay(.35, function()
-			pcall(function() line:Destroy() end)
-			self._notifyDebounce = false
-		end)
+	task.delay(2.5, function()
+		if self.NotifyBar and self.NotifyBar.Parent then
+			TweenService:Create(self.NotifyBar, TweenInfo.new(0.4), {
+				TextTransparency = 1, BackgroundTransparency = 1
+			}):Play()
+		end
+		self._notifyDebounce = false
 	end)
 end
 
--- ┌─────────────────────────────────────┐
--- │  AddTab  (same signature)           │
--- └─────────────────────────────────────┘
+--=============================================
+-- PUBLIC: Add Tab
+--=============================================
 function UILib:AddTab(config)
 	local tabName = config.Name or "Tab"
-	local tabIcon = config.Icon or "○"
+	local tabIcon = config.Icon or "📁"
 
 	self._tabIndex = self._tabIndex + 1
 	local index = self._tabIndex
-	local px    = self.IsMobile and 5 or 6
 
-	-- Tab button
-	local btn = N("TextButton", self.Sidebar, {
-		BackgroundColor3     = D.BG2,
-		BackgroundTransparency = 1,
-		BorderSizePixel      = 0,
-		Position = UDim2.new(0,px,0, 26+(index-1)*self.TabButtonSpacing),
-		Size     = UDim2.new(1,-px*2,0,self.TabButtonHeight),
-		Text     = "",
-		AutoButtonColor = false,
-	})
-	corner(btn, 6)
+	local btnPadX = self.IsMobile and 4 or 8
+	local btnH = self.TabButtonHeight
+	local spacing = self.TabButtonSpacing
 
-	-- Active indicator (left edge bar)
-	local indicator = N("Frame", btn, {
-		Name             = "Indicator",
-		BackgroundColor3 = D.ACC,
-		BackgroundTransparency = 1,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,0,.15,0),
-		Size     = UDim2.new(0,2,.7,0),
-	})
-	corner(indicator, 99)
+	local btn = Instance.new("TextButton", self.Sidebar)
+	btn.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+	btn.BorderSizePixel = 0
+	btn.Position = UDim2.new(0, btnPadX, 0, 6 + (index - 1) * spacing)
+	btn.Size = UDim2.new(1, -btnPadX * 2, 0, btnH)
+	btn.Text = ""
+	btn.AutoButtonColor = false
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
 
-	-- Icon label
-	N("TextLabel", btn, {
-		Name               = "Icon",
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,8,0,0),
-		Size     = UDim2.new(0,18,1,0),
-		Font     = D.FSB,
-		Text     = tabIcon,
-		TextColor3 = D.T2,
-		TextSize   = self.FontTab + 1,
-	})
+	local indicator = Instance.new("Frame", btn)
+	indicator.Name = "Indicator"
+	indicator.BackgroundColor3 = Color3.fromRGB(80, 140, 255)
+	indicator.BackgroundTransparency = 1
+	indicator.BorderSizePixel = 0
+	indicator.Position = UDim2.new(0, 0, 0.1, 0)
+	indicator.Size = UDim2.new(0, 3, 0.8, 0)
+	Instance.new("UICorner", indicator).CornerRadius = UDim.new(0, 2)
 
-	-- Name label  (kept as "Label" for SwitchTab compat)
-	N("TextLabel", btn, {
-		Name               = "Label",
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,28,0,0),
-		Size     = UDim2.new(1,-32,1,0),
-		Font     = D.FSB,
-		Text     = tabName,
-		TextColor3 = D.T2,
-		TextSize   = self.FontTab,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate   = Enum.TextTruncate.AtEnd,
-	})
+	local label = Instance.new("TextLabel", btn)
+	label.Name = "Label"
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.new(0, 10, 0, 0)
+	label.Size = UDim2.new(1, -10, 1, 0)
+	label.Font = Enum.Font.GothamBold
+	label.Text = tabIcon .. " " .. tabName
+	label.TextColor3 = Color3.fromRGB(110, 110, 120)
+	label.TextSize = self.FontTab
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
 
-	-- Tab page (scrollable)
-	local cp   = self.SectionPadding
-	local page = N("ScrollingFrame", self.ContentArea, {
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0,0,0,0),
-		Size     = UDim2.new(1,0,1,0),
-		ScrollBarThickness  = 2,
-		ScrollBarImageColor3 = D.BDL,
-		CanvasSize          = UDim2.new(0,0,0,0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		Visible             = false,
-	})
-	padI(page, cp, cp+3, cp, cp)
-	vList(page, self.IsMobile and 6 or 7)
+	local contentPad = self.IsMobile and 8 or 16
+
+	local page = Instance.new("ScrollingFrame", self.ContentArea)
+	page.BackgroundTransparency = 1
+	page.BorderSizePixel = 0
+	page.Position = UDim2.new(0, contentPad, 0, contentPad * 0.6)
+	page.Size = UDim2.new(1, -contentPad * 2, 1, -contentPad)
+	page.ScrollBarThickness = 3
+	page.ScrollBarImageColor3 = Color3.fromRGB(50, 60, 80)
+	page.CanvasSize = UDim2.new(0, 0, 0, 0)
+	page.Visible = false
+	page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+	Instance.new("UIPadding", page).PaddingRight = UDim.new(0, 6)
+	local layout = Instance.new("UIListLayout", page)
+	layout.Padding = UDim.new(0, self.IsMobile and 6 or 10)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
 
 	self.TabButtons[tabName] = btn
-	self.TabPages[tabName]   = page
+	self.TabPages[tabName] = page
 
-	btn.MouseButton1Click:Connect(function() self:SwitchTab(tabName) end)
-
-	btn.MouseEnter:Connect(function()
-		if self.ActiveTab ~= tabName then
-			T(btn, {BackgroundTransparency=0.87}, .14):Play()
-		end
-	end)
-	btn.MouseLeave:Connect(function()
-		if self.ActiveTab ~= tabName then
-			T(btn, {BackgroundTransparency=1}, .14):Play()
-		end
+	btn.MouseButton1Click:Connect(function()
+		self:SwitchTab(tabName)
 	end)
 
-	if index == 1 then task.defer(function() self:SwitchTab(tabName) end) end
+	if index == 1 then
+		task.defer(function()
+			self:SwitchTab(tabName)
+		end)
+	end
 
-	local tab = { Name=tabName, Page=page, Library=self, _sectionOrder=0 }
+	local tab = {
+		Name = tabName,
+		Page = page,
+		Library = self,
+		_sectionOrder = 0
+	}
 	setmetatable(tab, {__index = UILib._TabMethods})
+
 	table.insert(self.Tabs, tab)
 	return tab
 end
 
--- ┌─────────────────────────────────────┐
--- │  SwitchTab  (same logic, new style) │
--- └─────────────────────────────────────┘
+--=============================================
+-- PUBLIC: Switch Tab
+--=============================================
 function UILib:SwitchTab(name)
 	if self.ActiveTab == name then return end
 	self.ActiveTab = name
 
 	for tabName, btn in pairs(self.TabButtons) do
-		local ind  = btn:FindFirstChild("Indicator")
-		local lbl  = btn:FindFirstChild("Label")
-		local ico  = btn:FindFirstChild("Icon")
-		local act  = (tabName == name)
+		local ind = btn:FindFirstChild("Indicator")
+		local lbl = btn:FindFirstChild("Label")
 
-		T(btn, {BackgroundTransparency = act and 0.88 or 1}, .18):Play()
-		if lbl then T(lbl, {TextColor3 = act and D.T0  or D.T2}, .18):Play() end
-		if ico then T(ico, {TextColor3 = act and D.ACL or D.T2}, .18):Play() end
-		if ind then T(ind, {BackgroundTransparency = act and 0 or 1}, .18):Play() end
+		if tabName == name then
+			TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(25, 25, 35)}):Play()
+			if lbl then TweenService:Create(lbl, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(240, 240, 255)}):Play() end
+			if ind then TweenService:Create(ind, TweenInfo.new(0.2), {BackgroundTransparency = 0}):Play() end
+		else
+			TweenService:Create(btn, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(15, 15, 20)}):Play()
+			if lbl then TweenService:Create(lbl, TweenInfo.new(0.2), {TextColor3 = Color3.fromRGB(110, 110, 120)}):Play() end
+			if ind then TweenService:Create(ind, TweenInfo.new(0.2), {BackgroundTransparency = 1}):Play() end
+		end
 	end
 
 	for tabName, page in pairs(self.TabPages) do
-		page.Visible = (tabName == name)
+		TweenService:Create(page, TweenInfo.new(0.2), {Visible = (tabName == name)}):Play()
 	end
 end
 
--- ┌─────────────────────────────────────┐
--- │  OnUpdate / Update Loop  (same)     │
--- └─────────────────────────────────────┘
+--=============================================
+-- PUBLIC: Register Update Callback
+--=============================================
 function UILib:OnUpdate(callback)
 	table.insert(self.UpdateCallbacks, callback)
 end
 
+--=============================================
+-- INTERNAL: Update Loop
+--=============================================
 function UILib:_startUpdateLoop()
 	task.spawn(function()
 		while self.ScreenGui and self.ScreenGui.Parent do
-			for _, cb in ipairs(self.UpdateCallbacks) do pcall(cb) end
+			for _, cb in ipairs(self.UpdateCallbacks) do
+				pcall(cb)
+			end
 			task.wait(0.5)
 		end
 	end)
 end
 
--- ┌─────────────────────────────────────┐
--- │  CreateToggleButton  (same sig)     │
--- └─────────────────────────────────────┘
+--=============================================
+-- PUBLIC: Create Toggle Button (floating)
+--=============================================
 function UILib:CreateToggleButton(config)
 	config = config or {}
 	local icon = config.Icon or "🌾"
@@ -851,51 +770,51 @@ function UILib:CreateToggleButton(config)
 	local old = game.CoreGui:FindFirstChild("UILib_Toggle")
 	if old then old:Destroy() end
 
-	local sg   = N("ScreenGui", game.CoreGui, {Name="UILib_Toggle", ResetOnSpawn=false})
-	local sz   = self.IsMobile and 38 or 48
+	local toggleGui = Instance.new("ScreenGui")
+	toggleGui.Name = "UILib_Toggle"
+	toggleGui.Parent = game.CoreGui
+	toggleGui.ResetOnSpawn = false
 
-	local outer = N("Frame", sg, {
-		AnchorPoint      = Vector2.new(.5,.5),
-		BackgroundColor3 = D.BG3,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,sz/2+6,.5,0),
-		Size     = UDim2.new(0,sz,0,sz),
-	})
-	corner(outer, 12)
-	stroke(outer, D.ACC, 1, 0.35)
+	local btnSize = self.IsMobile and 42 or 55
+	local txtSize = self.IsMobile and 20 or 26
 
-	N("TextLabel", outer, {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1,0,1,0),
-		Font = D.FB,
-		Text = icon,
-		TextSize = self.IsMobile and 19 or 24,
-	})
+	local toggleBtn = Instance.new("TextButton", toggleGui)
+	toggleBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+	toggleBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+	toggleBtn.BorderSizePixel = 0
+	toggleBtn.Position = UDim2.new(0, btnSize/2 + 10, 0.5, 0)
+	toggleBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
+	toggleBtn.Font = Enum.Font.GothamBold
+	toggleBtn.Text = icon
+	toggleBtn.TextSize = txtSize
+	toggleBtn.Active = true
+	toggleBtn.Draggable = true
+	Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(1, 0)
 
-	local tbtn = N("TextButton", outer, {
-		BackgroundTransparency = 1,
-		Size     = UDim2.new(1,0,1,0),
-		Text     = "",
-		Draggable = true,
-	})
+	local stroke = Instance.new("UIStroke", toggleBtn)
+	stroke.Color = Color3.fromRGB(60, 80, 180)
+	stroke.Thickness = 2
 
-	-- Subtle bg pulse
+	-- Glow animation on button
 	task.spawn(function()
-		while sg and sg.Parent do
-			T(outer, {BackgroundColor3=D.BG4}, .95, Enum.EasingStyle.Sine):Play(); task.wait(.95)
-			T(outer, {BackgroundColor3=D.BG3}, .95, Enum.EasingStyle.Sine):Play(); task.wait(.95)
+		while toggleGui and toggleGui.Parent do
+			stroke.Transparency = 0.8
+			task.wait(1.5)
+			stroke.Transparency = 0
+			task.wait(1.5)
 		end
 	end)
 
-	tbtn.MouseButton1Click:Connect(function()
+	toggleBtn.MouseButton1Click:Connect(function()
 		self.ScreenGui.Enabled = not self.ScreenGui.Enabled
 	end)
-	return sg
+
+	return toggleGui
 end
 
--- ┌─────────────────────────────────────┐
--- │  Destroy  (same)                    │
--- └─────────────────────────────────────┘
+--=============================================
+-- PUBLIC: Destroy
+--=============================================
 function UILib:Destroy()
 	self._antiAfkActive = false
 	if self._antiAfkIdleConnection then
@@ -903,547 +822,527 @@ function UILib:Destroy()
 		self._antiAfkIdleConnection = nil
 	end
 	if self.ScreenGui then self.ScreenGui:Destroy() end
-	local t = game.CoreGui:FindFirstChild("UILib_Toggle")
-	if t then t:Destroy() end
+	local toggle = game.CoreGui:FindFirstChild("UILib_Toggle")
+	if toggle then toggle:Destroy() end
 end
 
--- ════════════════════════════════════════
---  TAB METHODS
--- ════════════════════════════════════════
+--=============================================
+-- TAB METHODS (UNCHANGED STRUCTURE BUT CLEANED UP)
+--=============================================
 UILib._TabMethods = {}
 
--- AddSection
 function UILib._TabMethods:AddSection(config)
 	self._sectionOrder = self._sectionOrder + 1
 	local title = config.Title or "Section"
 	local order = config.Order or self._sectionOrder
-	local lib   = self.Library
+	local lib = self.Library
 
-	local section = N("Frame", self.Page, {
-		BackgroundColor3 = D.BG3,
-		BorderSizePixel  = 0,
-		Size             = UDim2.new(1,0,0,0),
-		AutomaticSize    = Enum.AutomaticSize.Y,
-		LayoutOrder      = order,
-	})
-	corner(section, lib.IsMobile and 7 or 8)
-	stroke(section, D.BD, 1, 0.2)
+	local section = Instance.new("Frame", self.Page)
+	section.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+	section.BorderSizePixel = 0
+	section.Size = UDim2.new(1, 0, 0, 0)
+	section.AutomaticSize = Enum.AutomaticSize.Y
+	section.LayoutOrder = order
+	Instance.new("UICorner", section).CornerRadius = UDim.new(0, 8)
 
-	-- ── Section header bar ────────────────────────────────────
-	local hdr = N("Frame", section, {
-		BackgroundColor3 = D.BG4,
-		BorderSizePixel  = 0,
-		Size = UDim2.new(1,0,0, lib.IsMobile and 22 or 24),
-	})
-	-- Accent stripe
-	local stripe = N("Frame", hdr, {
-		BackgroundColor3 = D.ACC,
-		BorderSizePixel  = 0,
-		Size = UDim2.new(0,2,1,0),
-	})
-	corner(stripe, 99)
-	N("TextLabel", hdr, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,10,0,0),
-		Size     = UDim2.new(1,-14,1,0),
-		Font     = D.FSB,
-		Text     = string.upper(title),
-		TextColor3 = D.T1,
-		TextSize   = lib.IsMobile and 8 or 9,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
+	local stroke = Instance.new("UIStroke", section)
+	stroke.Color = Color3.fromRGB(40, 40, 55)
+	stroke.Thickness = 1
+	stroke.Transparency = 0.5
 
-	-- ── Content wrapper ───────────────────────────────────────
-	local wrap = N("Frame", section, {
-		BackgroundTransparency = 1,
-		BorderSizePixel        = 0,
-		Position = UDim2.new(0,0,0, lib.IsMobile and 22 or 24),
-		Size     = UDim2.new(1,0,0,0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-	})
-	padI(wrap,
-		lib.IsMobile and 7 or 8,
-		lib.IsMobile and 7 or 8,
-		lib.IsMobile and 5 or 6,
-		lib.IsMobile and 6 or 7)
-	vList(wrap, lib.IsMobile and 4 or 5)
+	local padV = lib.IsMobile and 8 or 12
+	local padH = lib.IsMobile and 10 or 16
+	local padding = Instance.new("UIPadding", section)
+	padding.PaddingLeft = UDim.new(0, padH)
+	padding.PaddingRight = UDim.new(0, padH)
+	padding.PaddingTop = UDim.new(0, padV)
+	padding.PaddingBottom = UDim.new(0, padV + 3)
 
-	local sec = { Frame=section, _wrap=wrap, Tab=self, Library=lib, _elementOrder=0 }
+	local layout = Instance.new("UIListLayout", section)
+	layout.Padding = UDim.new(0, lib.IsMobile and 6 or 10)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local titleLabel = Instance.new("TextLabel", section)
+	titleLabel.BackgroundTransparency = 1
+	titleLabel.Size = UDim2.new(1, 0, 0, lib.IsMobile and 18 or 22)
+	titleLabel.Font = Enum.Font.GothamBold
+	titleLabel.Text = title
+	titleLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
+	titleLabel.TextSize = lib.IsMobile and 12 or 15
+	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	titleLabel.LayoutOrder = 0
+
+	local sec = {
+		Frame = section,
+		Tab = self,
+		Library = lib,
+		_elementOrder = 0
+	}
 	setmetatable(sec, {__index = UILib._SectionMethods})
 	return sec
 end
 
--- AddNote (tab level)
 function UILib._TabMethods:AddNote(config)
 	self._sectionOrder = self._sectionOrder + 1
-	local text  = config.Text  or ""
+	local text = config.Text or ""
 	local order = config.Order or self._sectionOrder
-	local lib   = self.Library
+	local lib = self.Library
 
-	local f = N("Frame", self.Page, {
-		BackgroundColor3 = Color3.fromRGB(13,21,46),
-		BorderSizePixel  = 0,
-		Size             = UDim2.new(1,0,0,0),
-		AutomaticSize    = Enum.AutomaticSize.Y,
-		LayoutOrder      = order,
-	})
-	corner(f, 7)
-	stroke(f, D.ACC, 1, 0.5)
-	local lb = N("Frame",f,{BackgroundColor3=D.ACL,BorderSizePixel=0,Size=UDim2.new(0,2,1,0)})
-	corner(lb,99)
+	local noteFrame = Instance.new("Frame", self.Page)
+	noteFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	noteFrame.BorderSizePixel = 0
+	noteFrame.Size = UDim2.new(1, 0, 0, 0)
+	noteFrame.AutomaticSize = Enum.AutomaticSize.Y
+	noteFrame.LayoutOrder = order
+	Instance.new("UICorner", noteFrame).CornerRadius = UDim.new(0, 6)
 
-	local lbl = N("TextLabel", f, {
-		BackgroundTransparency = 1,
-		Position  = UDim2.new(0,10,0,6),
-		Size      = UDim2.new(1,-18,0,0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Font      = D.FN,
-		Text      = text,
-		TextColor3 = D.ACL,
-		TextSize   = lib.FontSmall + 1,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	N("UIPadding",f,{PaddingBottom=UDim.new(0,6)})
-	return lbl
+	local noteText = Instance.new("TextLabel", noteFrame)
+	noteText.BackgroundTransparency = 1
+	noteText.Size = UDim2.new(1, -16, 0, 0)
+	noteText.AutomaticSize = Enum.AutomaticSize.Y
+	noteText.Position = UDim2.new(0, 8, 0, 6)
+	noteText.Font = Enum.Font.Gotham
+	noteText.Text = text
+	noteText.TextColor3 = Color3.fromRGB(150, 180, 255)
+	noteText.TextSize = lib.IsMobile and 9 or 11
+	noteText.TextWrapped = true
+	noteText.TextXAlignment = Enum.TextXAlignment.Left
+
+	Instance.new("UIPadding", noteFrame).PaddingBottom = UDim.new(0, 8)
+
+	return noteText
 end
 
--- ════════════════════════════════════════
---  SECTION METHODS
--- ════════════════════════════════════════
+--=============================================
+-- SECTION METHODS (CLEANUP & VISUAL TWEAKS)
+--=============================================
 UILib._SectionMethods = {}
 
-local function W(s) return s._wrap end   -- helper: content parent
-
--- AddToggle
 function UILib._SectionMethods:AddToggle(config)
 	self._elementOrder = self._elementOrder + 1
-	local text     = config.Text     or "Toggle"
-	local default  = config.Default  or false
-	local callback = config.Callback or function()end
-	local order    = config.Order    or self._elementOrder
-	local lib      = self.Library
-	local h        = lib.ElementHeight
+	local text = config.Text or "Toggle"
+	local default = config.Default or false
+	local callback = config.Callback or function() end
+	local order = config.Order or self._elementOrder
+	local lib = self.Library
+	local h = lib.ElementHeight
 
-	local row = N("Frame", W(self), {
-		BackgroundTransparency = 1,
-		BorderSizePixel        = 0,
-		Size        = UDim2.new(1,0,0,h),
-		LayoutOrder = order,
-	})
-	N("TextLabel", row, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,0,0,0),
-		Size     = UDim2.new(1,-52,1,0),
-		Font     = D.FSB,
-		Text     = text,
-		TextColor3 = D.T1,
-		TextSize   = lib.FontElement,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate   = Enum.TextTruncate.AtEnd,
-	})
+	local frame = Instance.new("Frame", self.Frame)
+	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.new(1, 0, 0, h)
+	frame.LayoutOrder = order
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
-	local tW = lib.IsMobile and 34 or 38
-	local tH = lib.IsMobile and 18 or 21
-	local kS = tH - 5
+	local label = Instance.new("TextLabel", frame)
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.new(0, 10, 0, 0)
+	label.Size = UDim2.new(1, -60, 1, 0)
+	label.Font = Enum.Font.GothamSemibold
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(180, 180, 200)
+	label.TextSize = lib.FontElement
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
 
-	local track = N("Frame", row, {
-		BackgroundColor3 = default and D.ACC or D.BG5,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(1,-(tW+2),.5,-tH/2),
-		Size     = UDim2.new(0,tW,0,tH),
-	})
-	corner(track, 99)
-	stroke(track, D.BD, 1, 0)
+	local toggleW = lib.IsMobile and 36 or 44
+	local toggleH = lib.IsMobile and 20 or 24
+	local knobSize = lib.IsMobile and 14 or 18
 
-	local knob = N("Frame", track, {
-		BackgroundColor3 = Color3.new(1,1,1),
-		BorderSizePixel  = 0,
-		Position = default and UDim2.new(1,-(kS+2),.5,-kS/2) or UDim2.new(0,2,.5,-kS/2),
-		Size     = UDim2.new(0,kS,0,kS),
-	})
-	corner(knob, 99)
+	local bg = Instance.new("Frame", frame)
+	bg.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+	bg.BorderSizePixel = 0
+	bg.Position = UDim2.new(1, -(toggleW + 10), 0.5, -toggleH/2)
+	bg.Size = UDim2.new(0, toggleW, 0, toggleH)
+	Instance.new("UICorner", bg).CornerRadius = UDim.new(1, 0)
+
+	local knob = Instance.new("Frame", bg)
+	knob.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+	knob.BorderSizePixel = 0
+	knob.Position = UDim2.new(0, 3, 0.5, -knobSize/2)
+	knob.Size = UDim2.new(0, knobSize, 0, knobSize)
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
 	local active = default
-	local function refresh()
-		T(track, {BackgroundColor3 = active and D.ACC or D.BG5}, .2):Play()
-		T(knob, {Position = active
-			and UDim2.new(1,-(kS+2),.5,-kS/2)
-			or  UDim2.new(0,2,.5,-kS/2)}, .2, Enum.EasingStyle.Back):Play()
+
+	local function updateVisual()
+		if active then
+			bg.BackgroundColor3 = Color3.fromRGB(70, 180, 110)
+			knob.Position = UDim2.new(1, -(knobSize + 3), 0.5, -knobSize/2)
+			knob.BackgroundColor3 = Color3.new(1, 1, 1)
+		else
+			bg.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+			knob.Position = UDim2.new(0, 3, 0.5, -knobSize/2)
+			knob.BackgroundColor3 = Color3.fromRGB(150, 150, 170)
+		end
 	end
 
-	local ca = N("TextButton", row, {BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),Text=""})
-	ca.MouseButton1Click:Connect(function() active=not active; refresh(); callback(active) end)
-	if active then refresh() end
+	local clickBtn = Instance.new("TextButton", frame)
+	clickBtn.BackgroundTransparency = 1
+	clickBtn.Size = UDim2.new(1, 0, 1, 0)
+	clickBtn.Text = ""
+
+	clickBtn.MouseButton1Click:Connect(function()
+		active = not active
+		updateVisual()
+		callback(active)
+	end)
+
+	if active then updateVisual() end
 
 	return {
-		Frame    = row,
-		SetValue = function(_, v) active=v; refresh() end,
-		GetValue = function() return active end,
+		Frame = frame,
+		SetValue = function(_, val) active = val; updateVisual() end,
+		GetValue = function() return active end
 	}
 end
 
--- AddButton
 function UILib._SectionMethods:AddButton(config)
 	self._elementOrder = self._elementOrder + 1
-	local text     = config.Text     or "Button"
-	local color    = config.Color    or D.ACC
-	local callback = config.Callback or function()end
-	local order    = config.Order    or self._elementOrder
-	local lib      = self.Library
+	local text = config.Text or "Button"
+	local color = config.Color or Color3.fromRGB(70, 100, 255)
+	local callback = config.Callback or function() end
+	local order = config.Order or self._elementOrder
+	local lib = self.Library
 
-	local btn = N("TextButton", W(self), {
-		BackgroundColor3 = color,
-		BorderSizePixel  = 0,
-		Size     = UDim2.new(1,0,0,lib.ElementHeight),
-		Font     = D.FSB,
-		Text     = text,
-		TextColor3 = Color3.new(1,1,1),
-		TextSize   = lib.FontElement,
-		AutoButtonColor = false,
-		LayoutOrder = order,
-	})
-	corner(btn, 7)
-	N("UIGradient", btn, {
-		Transparency = NumberSequence.new{
-			NumberSequenceKeypoint.new(0, 0),
-			NumberSequenceKeypoint.new(1, .28),
-		},
-		Rotation = 90,
-	})
+	local btn = Instance.new("TextButton", self.Frame)
+	btn.BackgroundColor3 = color
+	btn.BorderSizePixel = 0
+	btn.Size = UDim2.new(1, 0, 0, lib.ElementHeight)
+	btn.Font = Enum.Font.GothamBold
+	btn.Text = text
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.TextSize = lib.IsMobile and 12 or 14
+	btn.AutoButtonColor = false
+	btn.LayoutOrder = order
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
-	btn.MouseEnter:Connect(function()
-		T(btn, {BackgroundColor3 = color:Lerp(Color3.new(1,1,1),.12)}, .13):Play()
-	end)
-	btn.MouseLeave:Connect(function()
-		T(btn, {BackgroundColor3 = color}, .13):Play()
-	end)
-	btn.MouseButton1Down:Connect(function()
-		T(btn, {Size=UDim2.new(0.98,0,0,lib.ElementHeight-2)}, .07):Play()
-	end)
-	btn.MouseButton1Up:Connect(function()
-		T(btn, {Size=UDim2.new(1,0,0,lib.ElementHeight)}, .13, Enum.EasingStyle.Back):Play()
-		callback(btn)
-	end)
+	local gradient = Instance.new("UIGradient", btn)
+	gradient.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 0.3)
+	}
+	gradient.Rotation = 90
+
+	btn.MouseButton1Click:Connect(function() callback(btn) end)
 	return btn
 end
 
--- AddLabel
 function UILib._SectionMethods:AddLabel(config)
 	self._elementOrder = self._elementOrder + 1
-	local text  = config.Text  or ""
+	local text = config.Text or ""
 	local order = config.Order or self._elementOrder
-	local lib   = self.Library
-	local h     = config.Height or (lib.IsMobile and 20 or 24)
+	local lib = self.Library
+	local h = config.Height or (lib.IsMobile and 24 or 30)
 
-	local lbl = N("TextLabel", W(self), {
-		BackgroundColor3     = D.BG5,
-		BackgroundTransparency = 0.38,
-		BorderSizePixel      = 0,
-		Size = UDim2.new(1,0,0,h),
-		Font = D.FN,
-		Text = text,
-		TextColor3 = config.TextColor or D.T2,
-		TextSize   = config.TextSize  or (lib.FontSmall+1),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextWrapped    = true,
-		LayoutOrder    = order,
-	})
-	corner(lbl, 5)
-	padI(lbl, 8, 6)
-	return lbl
+	local label = Instance.new("TextLabel", self.Frame)
+	label.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+	label.BorderSizePixel = 0
+	label.Size = UDim2.new(1, 0, 0, h)
+	label.Font = Enum.Font.GothamSemibold
+	label.Text = text
+	label.TextColor3 = config.TextColor or Color3.fromRGB(150, 150, 170)
+	label.TextSize = config.TextSize or (lib.IsMobile and 10 or 12)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextWrapped = true
+	label.LayoutOrder = order
+	Instance.new("UICorner", label).CornerRadius = UDim.new(0, 6)
+
+	local padding = Instance.new("UIPadding", label)
+	padding.PaddingLeft = UDim.new(0, 10)
+	padding.PaddingRight = UDim.new(0, 8)
+	if h > 35 then padding.PaddingTop = UDim.new(0, 6) end
+
+	return label
 end
 
--- AddNote (section level)
 function UILib._SectionMethods:AddNote(config)
 	self._elementOrder = self._elementOrder + 1
-	local text  = config.Text  or ""
+	local text = config.Text or ""
 	local order = config.Order or self._elementOrder
-	local lib   = self.Library
+	local lib = self.Library
 
-	local f = N("Frame", W(self), {
-		BackgroundColor3 = Color3.fromRGB(13,20,44),
-		BorderSizePixel  = 0,
-		Size             = UDim2.new(1,0,0,0),
-		AutomaticSize    = Enum.AutomaticSize.Y,
-		LayoutOrder      = order,
-	})
-	corner(f, 5)
-	stroke(f, D.ACC, 1, 0.58)
-	local lb=N("Frame",f,{BackgroundColor3=D.ACL,BorderSizePixel=0,Size=UDim2.new(0,2,1,0)})
-	corner(lb,99)
+	local noteFrame = Instance.new("Frame", self.Frame)
+	noteFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+	noteFrame.BorderSizePixel = 0
+	noteFrame.Size = UDim2.new(1, 0, 0, 0)
+	noteFrame.AutomaticSize = Enum.AutomaticSize.Y
+	noteFrame.LayoutOrder = order
+	Instance.new("UICorner", noteFrame).CornerRadius = UDim.new(0, 6)
 
-	local lbl = N("TextLabel", f, {
-		BackgroundTransparency = 1,
-		Position  = UDim2.new(0,9,0,4),
-		Size      = UDim2.new(1,-14,0,0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Font      = D.FN,
-		Text      = text,
-		TextColor3 = D.ACL,
-		TextSize   = lib.FontSmall,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	N("UIPadding",f,{PaddingBottom=UDim.new(0,4)})
-	return lbl
+	local noteText = Instance.new("TextLabel", noteFrame)
+	noteText.BackgroundTransparency = 1
+	noteText.Size = UDim2.new(1, -16, 0, 0)
+	noteText.AutomaticSize = Enum.AutomaticSize.Y
+	noteText.Position = UDim2.new(0, 8, 0, 6)
+	noteText.Font = Enum.Font.Gotham
+	noteText.Text = text
+	noteText.TextColor3 = Color3.fromRGB(150, 180, 255)
+	noteText.TextSize = lib.IsMobile and 9 or 11
+	noteText.TextWrapped = true
+	noteText.TextXAlignment = Enum.TextXAlignment.Left
+
+	Instance.new("UIPadding", noteFrame).PaddingBottom = UDim.new(0, 8)
+	return noteText
 end
 
--- AddFeature
 function UILib._SectionMethods:AddFeature(config)
 	self._elementOrder = self._elementOrder + 1
-	local icon  = config.Icon  or "◈"
-	local text  = config.Text  or "Feature"
-	local color = config.Color or D.CYN
+	local icon = config.Icon or "✨"
+	local text = config.Text or "Feature"
+	local color = config.Color or Color3.fromRGB(100, 200, 255)
 	local order = config.Order or self._elementOrder
-	local lib   = self.Library
-	local h     = lib.IsMobile and 26 or 30
+	local lib = self.Library
+	local h = lib.IsMobile and 28 or 36
 
-	local row = N("Frame", W(self), {
-		BackgroundColor3     = D.BG4,
-		BackgroundTransparency = 0.35,
-		BorderSizePixel      = 0,
-		Size = UDim2.new(1,0,0,h),
-		LayoutOrder = order,
-	})
-	corner(row, 5)
+	local frame = Instance.new("Frame", self.Frame)
+	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.new(1, 0, 0, h)
+	frame.LayoutOrder = order
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
-	-- colored left stripe
-	local stripe = N("Frame", row, {
-		BackgroundColor3 = color,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,0,.2,0),
-		Size     = UDim2.new(0,2,.6,0),
-	})
-	corner(stripe, 99)
+	local indicator = Instance.new("Frame", frame)
+	indicator.BackgroundColor3 = color
+	indicator.BorderSizePixel = 0
+	indicator.Size = UDim2.new(0, 3, 0.6, 0)
+	indicator.Position = UDim2.new(0, 0, 0.2, 0)
+	Instance.new("UICorner", indicator).CornerRadius = UDim.new(0, 2)
 
-	-- dot
-	local d = N("Frame", row, {
-		BackgroundColor3 = color,
-		BorderSizePixel  = 0,
-		Position = UDim2.new(0,8,.5,-3),
-		Size     = UDim2.new(0,6,0,6),
-	})
-	corner(d, 99)
+	local label = Instance.new("TextLabel", frame)
+	label.BackgroundTransparency = 1
+	label.Position = UDim2.new(0, 10, 0, 0)
+	label.Size = UDim2.new(1, -15, 1, 0)
+	label.Font = Enum.Font.GothamSemibold
+	label.Text = icon .. "  " .. text
+	label.TextColor3 = Color3.fromRGB(190, 190, 210)
+	label.TextSize = lib.IsMobile and 10 or 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
 
-	-- icon
-	N("TextLabel", row, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,18,0,0),
-		Size     = UDim2.new(0,18,1,0),
-		Font     = D.FSB,
-		Text     = icon,
-		TextColor3 = color,
-		TextSize   = lib.FontElement,
-	})
-
-	-- label
-	N("TextLabel", row, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,38,0,0),
-		Size     = UDim2.new(1,-42,1,0),
-		Font     = D.FSB,
-		Text     = text,
-		TextColor3 = D.T1,
-		TextSize   = lib.FontElement,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate   = Enum.TextTruncate.AtEnd,
-	})
-	return row
+	return frame
 end
 
--- AddButtonGrid
 function UILib._SectionMethods:AddButtonGrid(config)
 	self._elementOrder = self._elementOrder + 1
-	local items    = config.Items    or {}
-	local callback = config.Callback or function()end
-	local order    = config.Order    or self._elementOrder
-	local selected = config.Default  or (items[1] and items[1].name)
-	local lib      = self.Library
-	local btnW     = config.ButtonWidth or (lib.IsMobile and 56 or 68)
-	local gridH    = lib.IsMobile and 46 or 54
+	local items = config.Items or {}
+	local callback = config.Callback or function() end
+	local order = config.Order or self._elementOrder
+	local selected = config.Default or (items[1] and items[1].name)
+	local lib = self.Library
+	local btnW = config.ButtonWidth or (lib.IsMobile and 58 or 80)
+	local gridH = lib.IsMobile and 42 or 55
 
-	local sf = N("ScrollingFrame", W(self), {
-		BackgroundTransparency = 1,
-		BorderSizePixel        = 0,
-		Size        = UDim2.new(1,0,0,gridH),
-		LayoutOrder = order,
-		ScrollBarThickness   = 2,
-		ScrollBarImageColor3 = D.BDL,
-		AutomaticCanvasSize  = Enum.AutomaticSize.X,
-		CanvasSize           = UDim2.new(0,0,0,0),
-	})
-	hList(sf, lib.IsMobile and 4 or 5)
+	local gridFrame = Instance.new("ScrollingFrame", self.Frame)
+	gridFrame.BackgroundTransparency = 1
+	gridFrame.Size = UDim2.new(1, 0, 0, gridH)
+	gridFrame.LayoutOrder = order
+	gridFrame.ScrollBarThickness = 2
+	gridFrame.ScrollBarImageColor3 = Color3.fromRGB(60, 80, 180)
+	gridFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
+	gridFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+	gridFrame.BorderSizePixel = 0
+
+	local gridLayout = Instance.new("UIListLayout", gridFrame)
+	gridLayout.FillDirection = Enum.FillDirection.Horizontal
+	gridLayout.Padding = UDim.new(0, lib.IsMobile and 4 or 6)
+	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local buttons = {}
+
 	for i, item in ipairs(items) do
-		local ac  = (item.name == selected)
-		local ic  = item.color or D.ACC
+		local btn = Instance.new("TextButton", gridFrame)
+		btn.BackgroundColor3 = (item.name == selected) and (item.color or Color3.fromRGB(70, 100, 255)) or Color3.fromRGB(35, 35, 48)
+		btn.BorderSizePixel = 0
+		btn.Size = UDim2.new(0, btnW, 0, gridH - 5)
+		btn.Text = ""
+		btn.AutoButtonColor = false
+		btn.LayoutOrder = i
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 
-		local b = N("TextButton", sf, {
-			BackgroundColor3     = ac and ic or D.BG5,
-			BackgroundTransparency = ac and 0.18 or 0,
-			BorderSizePixel      = 0,
-			Size = UDim2.new(0,btnW,0,gridH-3),
-			Text = "", AutoButtonColor=false,
-			LayoutOrder = i,
-		})
-		corner(b, 7)
-		if ac then stroke(b, ic, 1, 0.44) end
+		local iconLabel = Instance.new("TextLabel", btn)
+		iconLabel.BackgroundTransparency = 1
+		iconLabel.Size = UDim2.new(1, 0, 0, lib.IsMobile and 20 or 28)
+		iconLabel.Text = item.icon or "📦"
+		iconLabel.TextSize = lib.IsMobile and 14 or 18
+		iconLabel.Font = Enum.Font.GothamBold
 
-		N("TextLabel", b, {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1,0,0,gridH*.52),
-			Text = item.icon or "□",
-			TextSize = lib.IsMobile and 15 or 19,
-			Font = D.FB,
-			TextColor3 = ac and ic or D.T2,
-		})
-		N("TextLabel", b, {
-			BackgroundTransparency = 1,
-			Position = UDim2.new(0,0,0,gridH*.52),
-			Size     = UDim2.new(1,0,0,gridH*.4),
-			Text     = item.label or item.name,
-			TextSize = lib.FontSmall,
-			Font     = D.FSB,
-			TextColor3 = ac and D.T0 or D.T2,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-		})
-		buttons[item.name] = b
+		local nameLabel = Instance.new("TextLabel", btn)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Position = UDim2.new(0, 0, 0, lib.IsMobile and 20 or 28)
+		nameLabel.Size = UDim2.new(1, 0, 0, lib.IsMobile and 14 or 18)
+		nameLabel.Text = item.label or item.name
+		nameLabel.TextColor3 = Color3.fromRGB(150, 150, 170)
+		nameLabel.TextSize = lib.IsMobile and 7 or 9
+		nameLabel.Font = Enum.Font.GothamSemibold
+		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 
-		b.MouseButton1Click:Connect(function()
+		buttons[item.name] = btn
+
+		btn.MouseButton1Click:Connect(function()
 			selected = item.name
 			for bName, bBtn in pairs(buttons) do
 				local bItem
-				for _, it in ipairs(items) do if it.name==bName then bItem=it; break end end
-				local c2 = bItem and (bItem.color or D.ACC) or D.ACC
-				local a2 = (bName == selected)
-				T(bBtn,{BackgroundColor3=a2 and c2 or D.BG5, BackgroundTransparency=a2 and 0.18 or 0},.18):Play()
-				local ch = bBtn:GetChildren()
-				if ch[1] then T(ch[1],{TextColor3=a2 and c2 or D.T2},.18):Play() end
-				if ch[2] then T(ch[2],{TextColor3=a2 and D.T0 or D.T2},.18):Play() end
+				for _, it in ipairs(items) do
+					if it.name == bName then bItem = it; break end
+				end
+				bBtn.BackgroundColor3 = (bName == selected) and (bItem and bItem.color or Color3.fromRGB(70, 100, 255)) or Color3.fromRGB(35, 35, 48)
 			end
 			callback(item)
 		end)
 	end
 
 	return {
-		Frame       = sf,
-		Buttons     = buttons,
+		Frame = gridFrame,
+		Buttons = buttons,
 		GetSelected = function() return selected end,
 		SetSelected = function(_, name)
 			selected = name
 			for bName, bBtn in pairs(buttons) do
 				local bItem
-				for _, it in ipairs(items) do if it.name==bName then bItem=it; break end end
-				local c2 = bItem and (bItem.color or D.ACC) or D.ACC
-				local a2 = (bName == selected)
-				T(bBtn,{BackgroundColor3=a2 and c2 or D.BG5, BackgroundTransparency=a2 and 0.18 or 0},.18):Play()
-				local ch = bBtn:GetChildren()
-				if ch[1] then T(ch[1],{TextColor3=a2 and c2 or D.T2},.18):Play() end
-				if ch[2] then T(ch[2],{TextColor3=a2 and D.T0 or D.T2},.18):Play() end
+				for _, it in ipairs(items) do
+					if it.name == bName then bItem = it; break end
+				end
+				bBtn.BackgroundColor3 = (bName == selected) and (bItem and bItem.color or Color3.fromRGB(70, 100, 255)) or Color3.fromRGB(35, 35, 48)
 			end
-		end,
+		end
 	}
 end
 
--- AddTextBox
 function UILib._SectionMethods:AddTextBox(config)
 	self._elementOrder = self._elementOrder + 1
 	local placeholder = config.Placeholder or "Type here..."
-	local default     = config.Default     or ""
-	local callback    = config.Callback    or function()end
-	local order       = config.Order       or self._elementOrder
-	local lib         = self.Library
-	local h           = lib.IsMobile and 30 or 34
+	local default = config.Default or ""
+	local callback = config.Callback or function() end
+	local order = config.Order or self._elementOrder
+	local lib = self.Library
+	local h = lib.IsMobile and 34 or 42
 
-	local frame = N("Frame", W(self), {
-		BackgroundColor3 = D.BG5,
-		BorderSizePixel  = 0,
-		Size     = UDim2.new(1,0,0,h),
-		LayoutOrder = order,
-	})
-	corner(frame, 6)
-	local s = N("UIStroke", frame, {Color=D.BD, Thickness=1})
+	local frame = Instance.new("Frame", self.Frame)
+	frame.BackgroundColor3 = Color3.fromRGB(35, 35, 48)
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.new(1, 0, 0, h)
+	frame.LayoutOrder = order
+	Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 6)
 
-	local tb = N("TextBox", frame, {
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0,8,0,0),
-		Size     = UDim2.new(1,-16,1,0),
-		Font     = D.FN,
-		PlaceholderText   = placeholder,
-		PlaceholderColor3 = D.T3,
-		Text      = default,
-		TextColor3 = D.T0,
-		TextSize   = lib.FontElement,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ClearTextOnFocus = false,
-	})
+	local textbox = Instance.new("TextBox", frame)
+	textbox.BackgroundTransparency = 1
+	textbox.Position = UDim2.new(0, 10, 0, 0)
+	textbox.Size = UDim2.new(1, -20, 1, 0)
+	textbox.Font = Enum.Font.Gotham
+	textbox.PlaceholderText = placeholder
+	textbox.PlaceholderColor3 = Color3.fromRGB(80, 80, 100)
+	textbox.Text = default
+	textbox.TextColor3 = Color3.new(1, 1, 1)
+	textbox.TextSize = lib.IsMobile and 12 or 14
+	textbox.TextXAlignment = Enum.TextXAlignment.Left
+	textbox.ClearTextOnFocus = false
 
-	tb.Focused:Connect(function()   T(s, {Color=D.ACC}, .18):Play() end)
-	tb.FocusLost:Connect(function() T(s, {Color=D.BD},  .18):Play(); callback(tb.Text) end)
-	return tb
+	textbox.FocusLost:Connect(function() callback(textbox.Text) end)
+	return textbox
 end
 
--- AddQuantitySelector
 function UILib._SectionMethods:AddQuantitySelector(config)
 	self._elementOrder = self._elementOrder + 1
-	local amounts  = config.Amounts  or {1,5,10,50,100}
-	local default  = config.Default  or amounts[3] or 10
-	local callback = config.Callback or function()end
-	local order    = config.Order    or self._elementOrder
-	local lib      = self.Library
-	local btnW     = lib.IsMobile and 46 or 56
-	local btnH     = lib.IsMobile and 25 or 29
+	local amounts = config.Amounts or {1, 5, 10, 50, 100}
+	local default = config.Default or amounts[3] or 10
+	local callback = config.Callback or function() end
+	local order = config.Order or self._elementOrder
+	local lib = self.Library
+	local btnW = lib.IsMobile and 48 or 65
+	local btnH = lib.IsMobile and 28 or 34
 
-	local sf = N("ScrollingFrame", W(self), {
-		BackgroundTransparency = 1,
-		BorderSizePixel        = 0,
-		Size = UDim2.new(1,0,0,btnH+3),
-		LayoutOrder = order,
-		ScrollBarThickness  = 2,
-		AutomaticCanvasSize = Enum.AutomaticSize.X,
-		CanvasSize          = UDim2.new(0,0,0,0),
-	})
-	hList(sf, lib.IsMobile and 3 or 4)
+	local gridFrame = Instance.new("ScrollingFrame", self.Frame)
+	gridFrame.BackgroundTransparency = 1
+	gridFrame.Size = UDim2.new(1, 0, 0, btnH + 4)
+	gridFrame.LayoutOrder = order
+	gridFrame.ScrollBarThickness = 2
+	gridFrame.AutomaticCanvasSize = Enum.AutomaticSize.X
+	gridFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+	gridFrame.BorderSizePixel = 0
+
+	local gridLayout = Instance.new("UIListLayout", gridFrame)
+	gridLayout.FillDirection = Enum.FillDirection.Horizontal
+	gridLayout.Padding = UDim.new(0, lib.IsMobile and 4 or 6)
 
 	local selected = default
-	local buttons  = {}
+	local buttons = {}
 
 	for _, amt in ipairs(amounts) do
-		local ac = (amt == default)
-		local b  = N("TextButton", sf, {
-			BackgroundColor3     = ac and D.GRN or D.BG5,
-			BackgroundTransparency = ac and 0.15 or 0,
-			BorderSizePixel      = 0,
-			Size    = UDim2.new(0,btnW,0,btnH),
-			Font    = D.FSB,
-			Text    = "x" .. amt,
-			TextColor3 = ac and D.T0 or D.T2,
-			TextSize   = lib.FontElement,
-			AutoButtonColor = false,
-		})
-		corner(b, 6)
-		buttons[amt] = b
+		local btn = Instance.new("TextButton", gridFrame)
+		btn.BackgroundColor3 = (amt == default) and Color3.fromRGB(60, 160, 100) or Color3.fromRGB(45, 50, 75)
+		btn.BorderSizePixel = 0
+		btn.Size = UDim2.new(0, btnW, 0, btnH)
+		btn.Font = Enum.Font.GothamBold
+		btn.Text = "x" .. amt
+		btn.TextColor3 = Color3.new(1, 1, 1)
+		btn.TextSize = lib.IsMobile and 10 or 13
+		btn.AutoButtonColor = false
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
 
-		b.MouseButton1Click:Connect(function()
+		buttons[amt] = btn
+
+		btn.MouseButton1Click:Connect(function()
 			selected = amt
-			for a2, b2 in pairs(buttons) do
-				local a = (a2 == selected)
-				T(b2,{
-					BackgroundColor3     = a and D.GRN or D.BG5,
-					BackgroundTransparency = a and 0.15 or 0,
-					TextColor3           = a and D.T0  or D.T2,
-				},.18):Play()
+			for a, b in pairs(buttons) do
+				b.BackgroundColor3 = (a == amt) and Color3.fromRGB(60, 160, 100) or Color3.fromRGB(45, 50, 75)
 			end
 			callback(amt)
 		end)
 	end
 
 	return {
-		Frame    = sf,
-		GetValue = function() return selected end,
+		Frame = gridFrame,
+		GetValue = function() return selected end
 	}
+end
+
+--=============================================
+-- INTERNAL: Anti-AFK SYSTEM [OPTIMIZED]
+--=============================================
+function UILib:_startAntiAFK()
+	local player = Players.LocalPlayer
+	if player then
+		local idleConn
+		idleConn = player.Idled:Connect(function()
+			pcall(function()
+				VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+				task.wait(0.1)
+				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+			end)
+		end)
+		self._antiAfkIdleConnection = idleConn
+	end
+
+	self._antiAfkActive = true
+	
+	-- Thread 1: Random Space Keystrokes
+	self._antiAfkThread = task.spawn(function()
+		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
+			local delayTime = math.random(15, 45) -- Random interval between 15s-45s
+			task.wait(delayTime)
+			if not self._antiAfkActive then break end
+			pcall(function()
+				VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+				task.wait(0.05)
+				VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+			end)
+		end
+	end)
+
+	-- Thread 2: Simulate Small Mouse Movements occasionally (for stricter anti-afk)
+	-- Optional, uncomment if you need mouse movement specifically
+	--[[
+	self._antiAfkMouseThread = task.spawn(function()
+		while self._antiAfkActive and self.ScreenGui and self.ScreenGui.Parent do
+			task.wait(math.random(60, 120))
+			if not self._antiAfkActive then break end
+			pcall(function()
+				VirtualInputManager:SendMouseMoveEvent(math.random(-5, 5), math.random(-5, 5), game)
+			end)
+		end
+	end)
+	]]
 end
 
 return UILib
